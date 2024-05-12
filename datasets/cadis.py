@@ -18,7 +18,7 @@ from torchvision.transforms.v2.functional import (
     vertical_flip_image,
 )
 
-DATA_PATH = "/data/wesam/thesis/CaDIS/"
+DATA_PATH = "/data/wesam/datasets/CaDIS/"
 
 
 class CaDIS(Dataset):
