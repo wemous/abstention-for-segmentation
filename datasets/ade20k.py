@@ -1,25 +1,26 @@
-from os import listdir, cpu_count, makedirs
-from os.path import join, exists
+from os import cpu_count, listdir, makedirs
+from os.path import exists, join
+
 import torch
+from PIL import Image
 from torch import Tensor
-from tqdm import tqdm
+from torch.utils.data import DataLoader, Dataset
 from torchvision.transforms.v2.functional import (
     pil_to_tensor,
+    resize,
     to_dtype,
     to_image,
-    resize,
 )
-from PIL import Image
-from torch.utils.data import Dataset, DataLoader
+from tqdm import tqdm
 
 DATA_PATH = "/data/wesam/datasets/ADE20K/"
 
 
 class ADE20K(Dataset):
-    def __init__(self, train=True, size: "tuple[int, int]" = (480, 512)):
+    def __init__(self, train=True, image_size: "tuple[int, int]" = (480, 512)):
         super().__init__()
         split = "training" if train else "validation"
-        trasnformed_path = join(DATA_PATH, f"transformed_{size[0]}_{size[1]}")
+        trasnformed_path = join(DATA_PATH, f"transformed_{image_size[0]}_{image_size[1]}")
 
         image_folder = join(DATA_PATH, "images", split)
         transformed_image_folder = join(trasnformed_path, "images", split)
@@ -34,7 +35,7 @@ class ADE20K(Dataset):
                 )
                 if image.shape[0] == 1:
                     image = image.expand(3, -1, -1)
-                image = resize(image, size, antialias=True)  # type: ignore
+                image = resize(image, image_size, antialias=True)  # type: ignore
                 torch.save(image, join(transformed_image_folder, f[:-4] + ".pt"))
 
         mask_folder = join(DATA_PATH, "annotations", split)
@@ -44,7 +45,7 @@ class ADE20K(Dataset):
             file_names = sorted(listdir(mask_folder))
             for f in tqdm(file_names, desc=f"transforming {split} annotations"):
                 mask = pil_to_tensor(Image.open(join(mask_folder, f)))
-                mask = resize(mask, size, antialias=True).squeeze().long()  # type: ignore
+                mask = resize(mask, image_size, antialias=True).squeeze().long()  # type: ignore
                 torch.save(mask, join(transformed_mask_folder, f[:-4] + ".pt"))
 
         self.image_paths = [
