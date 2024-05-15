@@ -39,7 +39,7 @@ class CaDIS(Dataset):
     def __init__(
         self,
         train=True,
-        transforms: Iterable[str] = {"original"},
+        transforms: Iterable = {"original"},
         image_size=(270, 480),
     ):
         super().__init__()
@@ -113,6 +113,7 @@ class CaDIS(Dataset):
 
                     for n in mask_names:
                         mask = pil_to_tensor(Image.open(join(mask_source, n)))
+                        mask[mask > 6] = 7
                         mask = resize(mask, image_size, antialias=True)  # type: ignore
                         if tf == "flip":
                             mask = TRANSFORMS["flip"](mask)
