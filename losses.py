@@ -1,6 +1,8 @@
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+from torch import Tensor
+from torchvision.ops.focal_loss import sigmoid_focal_loss
 
 
 class CELoss(nn.Module):
@@ -8,12 +10,12 @@ class CELoss(nn.Module):
         super().__init__(*args, **kwargs)
         self.ce = nn.CrossEntropyLoss()
 
-    def forward(self, pred, target) -> torch.Tensor:
-        return self.ce(pred, target)
+    def forward(self, preds: Tensor, targets: Tensor) -> Tensor:
+        return self.ce(preds, targets)
 
 
-class DACLoss(torch.nn.Module):
-    """Apply deep abstaining classifier loss"""
+class DACLoss(nn.Module):
+    """Apply Deep Abstaining Classifier Loss"""
 
     def __init__(
         self,
@@ -27,6 +29,7 @@ class DACLoss(torch.nn.Module):
     ):
         super().__init__(*args, **kwargs)
         self.ce = CELoss()
+
         # fixed values
         self.max_epochs = max_epochs
         self.warmup_epochs = warmup_epochs
@@ -43,21 +46,19 @@ class DACLoss(torch.nn.Module):
 
     def forward(
         self,
-        pred,
-        target,
+        preds: Tensor,
+        targets: Tensor,
         train: bool = False,
         epoch: int = 0,
-        *args,
-        **kwargs,
     ):
-        assert pred.shape[1] == target.shape[1] + 1
-        ce_loss = self.ce(pred[:, :-1, :, :], target)
+        assert preds.shape[1] == targets.shape[1] + 1
+        ce_loss = self.ce(preds[:, :-1, :, :], targets)
 
         if train:
             abstention_rate = (
-                (pred.argmax(dim=1) == pred.shape[1] - 1).float().mean().item()
+                (preds.argmax(dim=1) == preds.shape[1] - 1).float().mean().item()
             )
-            abstain = torch.exp(F.log_softmax(pred, dim=1))[:, -1, :, :].mean()
+            abstain = torch.exp(F.log_softmax(preds, dim=1))[:, -1, :, :].mean()
             abstain = torch.min(
                 abstain,
                 torch.tensor(
@@ -98,66 +99,73 @@ class DACLoss(torch.nn.Module):
             return ce_loss
 
 
-class SCELoss(torch.nn.Module):
-    """Apply symmetric cross entropy loss"""
+class SCELoss(nn.Module):
+    """Apply Symmetric Cross Entropy Loss"""
 
-    def __init__(self, alpha, beta):
-        super(SCELoss, self).__init__()
+    def __init__(
+        self,
+        alpha: float = 0.1,
+        beta: float = 1,
+        A: float = -6,
+        num_classes: int = 151,
+        *args,
+        **kwargs,
+    ):
+        super().__init__(*args, **kwargs)
+        assert alpha > 0 and beta >= 0 and A < 0
         self.alpha = alpha
         self.beta = beta
+        self.A = A
+        self.num_classes = num_classes
         self.cross_entropy = nn.CrossEntropyLoss()
 
-    def forward(self, pred, target, *args, **kwargs):
+    def forward(self, preds: Tensor, targets: Tensor) -> Tensor:
         # CCE
-        ce = self.cross_entropy(pred, target)
+        ce = self.cross_entropy(preds, targets)
 
         # RCE
-        pred = F.softmax(pred, dim=1)
-        # q. why clip the predictions?
-        pred = torch.clamp(pred, min=1e-7, max=1.0)
-        # label_one_hot = torch.nn.functional.one_hot(labels, self.num_classes).float().to(self.device)
-        # label_one_hot = torch.clamp(label_one_hot, min=1e-4, max=1.0)
+        preds = F.softmax(preds, dim=1)
+        targets = (
+            F.one_hot(targets, self.num_classes)
+            .float()
+            .to(preds.device)
+            .permute(0, 3, 1, 2)
+        )
+        log_targets = torch.clamp(torch.log(targets), min=self.A)
+        rce = (-1 * torch.sum(preds * log_targets, dim=1)).mean()
 
-        # labels are already in one_hot for due to binary masks
-        labels = torch.clamp(target, min=1e-4, max=1.0)
-        rce = -1 * torch.sum(pred * torch.log(labels), dim=1)
-
-        # Loss
-        loss = self.alpha * ce + self.beta * rce.mean()
+        loss = self.alpha * ce + self.beta * rce
         return loss
 
 
-class WSCELoss(torch.nn.Module):
-    """Apply symmetric cross entropy loss with weights for silver interpolations"""
+class FocalLoss(nn.Module):
+    """Apply Focal Loss"""
 
-    def __init__(self, alpha, beta, ws=0.5, wg=1):
-        super(WSCELoss, self).__init__()
+    def __init__(
+        self,
+        gamma: float = 2,
+        alpha: float = 0.25,
+        num_classes: int = 151,
+        *args,
+        **kwargs,
+    ):
+        super().__init__(*args, **kwargs)
+        assert gamma >= 0 and alpha >= 0 and alpha <= 1
+        self.gamma = gamma
         self.alpha = alpha
-        self.beta = beta
-        self.ws = ws
-        self.wg = wg
-        self.cross_entropy = torch.nn.CrossEntropyLoss(reduction="none")
+        self.num_classes = num_classes
 
-    def forward(self, pred, target, label, *args, **kwargs):
-        # CCE
-        ce_tensor = self.cross_entropy(pred, target)  # B,H,W
-        weight_tensor = torch.ones(size=label.size(), device=label.device)
-        weight_tensor[label == 1] = self.ws
-        weight_tensor[label == 0] = self.wg
-        ce_tensor = ce_tensor.reshape(ce_tensor.shape[0], -1).mean()
-        ce = (ce_tensor * weight_tensor).mean()
-
-        # RCE
-        pred = F.softmax(pred, dim=1)
-        # q. why clip the predictions?
-        pred = torch.clamp(pred, min=1e-7, max=1.0)
-        # label_one_hot = torch.nn.functional.one_hot(labels, self.num_classes).float().to(self.device)
-        # label_one_hot = torch.clamp(label_one_hot, min=1e-4, max=1.0)
-
-        # labels are already in one_hot for due to binary masks
-        target = torch.clamp(target, min=1e-4, max=1.0)
-        rce = -1 * torch.sum(pred * torch.log(target), dim=1)
-
-        # Loss
-        loss = self.alpha * ce + self.beta * rce.mean()
-        return loss
+    def forward(self, preds: Tensor, targets: Tensor) -> Tensor:
+        targets = (
+            F.one_hot(targets, self.num_classes)
+            .float()
+            .to(preds.device)
+            .permute(0, 3, 1, 2)
+        )
+        return sigmoid_focal_loss(
+            inputs=preds,
+            targets=targets,
+            alpha=self.alpha,
+            gamma=self.gamma,
+            reduction="mean",
+        )
