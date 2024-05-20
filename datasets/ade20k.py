@@ -1,10 +1,10 @@
-from os import cpu_count, listdir, makedirs
+from os import listdir, makedirs
 from os.path import exists, join
 
 import torch
 from PIL import Image
 from torch import Tensor
-from torch.utils.data import DataLoader, Dataset
+from torch.utils.data import Dataset
 from torchvision.transforms.v2.functional import (
     pil_to_tensor,
     resize,
@@ -64,26 +64,3 @@ class ADE20K(Dataset):
         image = torch.load(self.image_paths[index])
         mask = torch.load(self.mask_paths[index])
         return image, mask
-
-
-# class ADE20KLoader(DataLoader):
-#     def __init__(self, train=True, batch_size=64):
-#         ade = ADE20K(train)
-#         super().__init__(
-#             ade,
-#             batch_size=batch_size,
-#             shuffle=train,
-#             drop_last=False,
-#             collate_fn=self.collate_fn,
-#             num_workers=cpu_count(),  # type: ignore
-#         )
-
-#     def collate_fn(self, batch: "list[tuple[torch.Tensor, torch.Tensor]]"):
-#         images, masks = zip(*batch)
-#         sizes = torch.tensor([_.shape[-2:] for _ in images])
-#         h, w = sizes.median(0)[0]
-#         images = torch.stack(
-#             [resize(_, [int(h), int(w)], antialias=True) for _ in images]
-#         )
-#         masks = torch.stack([resize(_, [int(h), int(w)], antialias=True) for _ in masks])
-#         return images, masks.squeeze()
