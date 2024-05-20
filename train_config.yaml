@@ -1,4 +1,3 @@
-run: unet
 seed: 13
 dataset: ade20k
 # dataset: cadis
