@@ -3,6 +3,7 @@ from importlib import import_module
 
 from lightning import LightningModule
 from torch import Tensor, clamp
+from torchmetrics.segmentation import GeneralizedDiceScore, MeanIoU
 
 
 class BaseModel(LightningModule, ABC):
@@ -11,9 +12,14 @@ class BaseModel(LightningModule, ABC):
         self.num_classes = num_classes
         self.loss_function = getattr(import_module(loss["module"]), loss["name"])(
             **loss["args"]
-        )
+        ).to(self.device)
         self.optimizer = getattr(import_module(optimizer["module"]), optimizer["name"])
         self.optimizer_args = optimizer["args"]
+
+        self.gcd = GeneralizedDiceScore(num_classes).to(self.device)
+        self.miou = MeanIoU(num_classes).to(self.device)
+
+        self.save_hyperparameters()
 
     @abstractmethod
     def forward(self, x: Tensor, *args, **kwargs) -> Tensor: ...
@@ -25,7 +31,7 @@ class BaseModel(LightningModule, ABC):
         preds = clamp(preds, min=1e-7)
         loss = self.loss_function(preds, targets)
         self.log(
-            "training loss",
+            "train/loss",
             loss,
             prog_bar=True,
             on_epoch=True,
@@ -40,12 +46,16 @@ class BaseModel(LightningModule, ABC):
         preds = clamp(preds, min=1e-7)
         loss = self.loss_function(preds, targets)
         self.log(
-            "validation loss",
+            "valid/loss",
             loss,
             prog_bar=True,
             on_epoch=True,
             sync_dist=True,
         )
+        gcd = self.gcd(preds.argmax(1), targets)
+        self.log("Generalized Dice Score", gcd, on_epoch=True)
+        miou = self.miou(preds.argmax(1), targets)
+        self.log("mIoU Score", miou, on_epoch=True)
         return loss
 
     def configure_optimizers(self):
