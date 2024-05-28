@@ -3,8 +3,9 @@ dataset: ade20k
 # dataset: cadis
 # image_size: !!python/tuple [480, 512]
 image_size: [480, 512]
-# transforms: ["blur", "elastic", "jitter", "equalize", "flip"]
-transforms: []
+# image_size: [270, 480]
+# transforms: ["original", "blur", "elastic", "jitter", "equalize", "flip"]
+transforms: ["original", "blur", "elastic", "flip"]
 batch_size: 16
 
 model:
@@ -15,11 +16,20 @@ model:
       module: losses
       name: CELoss
       args: {}
+      # name: DACLoss
+      # args:
+      #   max_epochs: 30
+      # name: SCELoss
+      # args: {}
+      # name: FocalLoss
+      # args: {}
+      # name: SFLoss
+      # args: {}
     optimizer:
       module: torch.optim
       name: AdamW
       args:
-        lr: 0.001
+        lr: !!float 1e-4
 
-max_epochs: 10
-devices: 1
+max_epochs: 30
+devices: 3
