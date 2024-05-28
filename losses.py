@@ -6,7 +6,7 @@ from torchvision.ops.focal_loss import sigmoid_focal_loss
 
 
 class CELoss(nn.Module):
-    def __init__(self, *args, **kwargs):
+    def __init__(self, num_classes=None, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.ce = nn.CrossEntropyLoss()
 
@@ -20,19 +20,20 @@ class DACLoss(nn.Module):
     def __init__(
         self,
         max_epochs: int,
-        warmup_epochs: int,
+        warmup_epochs: int = 0,
         alpha_final=1.0,
         alpha_init_factor=64,
         mu=0.05,
+        num_classes=None,
         *args,
         **kwargs,
     ):
         super().__init__(*args, **kwargs)
-        self.ce = CELoss()
+        self.ce = nn.CrossEntropyLoss()
 
         # fixed values
         self.max_epochs = max_epochs
-        self.warmup_epochs = warmup_epochs
+        self.warmup_epochs = warmup_epochs if warmup_epochs > 0 else max_epochs // 5
         self.alpha_final = alpha_final
         self.alpha_init_factor = alpha_init_factor
         self.mu = mu
@@ -123,10 +124,11 @@ class SCELoss(nn.Module):
         ce = self.cross_entropy(preds, targets)
 
         # RCE
+        pred = F.softmax(preds, dim=1)
         if targets.ndim < 4:
-            targets = F.one_hot(targets, self.num_classes).movedim(-1, 1).float()
-        preds = F.softmax(preds, dim=1)
-        rce = self.cross_entropy(-targets * self.A, preds)
+            targets = F.one_hot(targets.long(), self.num_classes).movedim(-1, 1)
+        log_targets = torch.clamp(torch.log(targets), min=self.A)
+        rce = (-1 * torch.sum(pred * log_targets, dim=1)).mean()
 
         loss = self.alpha * ce + self.beta * rce
         return loss
@@ -151,7 +153,7 @@ class FocalLoss(nn.Module):
 
     def forward(self, preds: Tensor, targets: Tensor) -> Tensor:
         if targets.ndim < 4:
-            targets = F.one_hot(targets, self.num_classes).movedim(-1, 1).float()
+            targets = F.one_hot(targets.long(), self.num_classes).movedim(-1, 1).float()
         return sigmoid_focal_loss(
             inputs=preds,
             targets=targets,
@@ -194,14 +196,14 @@ class SFLoss(nn.Module):
 
     def forward(self, preds: Tensor, targets: Tensor):
         # focal
-        ce = self.focal(preds, targets)
+        focal = self.focal(preds, targets)
 
         # reverse focal
         if targets.ndim < 4:
-            targets = F.one_hot(targets, self.num_classes).movedim(-1, 1).float()
+            targets = F.one_hot(targets.long(), self.num_classes).movedim(-1, 1).float()
         targets = (targets - 0.5) * 2
         preds = F.sigmoid(preds)
-        rce = self.focal(-targets * self.A, preds)
+        reverse_focal = self.focal(-targets * self.A, preds)
 
-        loss = self.alpha * ce + self.beta * rce
+        loss = self.alpha * focal + self.beta * reverse_focal
         return loss

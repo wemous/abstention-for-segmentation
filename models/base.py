@@ -2,13 +2,15 @@ from abc import ABC, abstractmethod
 from importlib import import_module
 
 from lightning import LightningModule
-from torch import Tensor, clamp
+from torch import Tensor
+from torch.nn.functional import one_hot
 from torchmetrics.segmentation import GeneralizedDiceScore, MeanIoU
 
 
 class BaseModel(LightningModule, ABC):
     def __init__(self, num_classes: int, loss: dict, optimizer: dict, **kwargs):
         super().__init__(**kwargs)
+        num_classes = num_classes - 1 if loss["name"] == "DACLoss" else num_classes
         self.num_classes = num_classes
         self.loss_function = getattr(import_module(loss["module"]), loss["name"])(
             **loss["args"]
@@ -16,7 +18,7 @@ class BaseModel(LightningModule, ABC):
         self.optimizer = getattr(import_module(optimizer["module"]), optimizer["name"])
         self.optimizer_args = optimizer["args"]
 
-        self.gcd = GeneralizedDiceScore(num_classes).to(self.device)
+        self.gdc = GeneralizedDiceScore(num_classes).to(self.device)
         self.miou = MeanIoU(num_classes).to(self.device)
 
         self.save_hyperparameters()
@@ -27,14 +29,23 @@ class BaseModel(LightningModule, ABC):
     def training_step(self, batch, batch_idx) -> Tensor:
         images = batch[0].to(self.device)
         targets = batch[1].to(self.device)
+        targets = one_hot(targets.long(), self.num_classes).movedim(-1, 1)
         preds = self.forward(images)
-        preds = clamp(preds, min=1e-7)
-        loss = self.loss_function(preds, targets)
+        if self.loss_function._get_name() == "DACLoss":
+            loss, abstention_rate = self.loss_function(
+                preds,
+                targets.float(),
+                train=True,
+                epoch=self.current_epoch,
+            )
+            self.log("abstention rate", abstention_rate, sync_dist=True)
+        else:
+            loss = self.loss_function(preds, targets.float())
         self.log(
             "train/loss",
             loss,
             prog_bar=True,
-            on_epoch=True,
+            on_step=True,
             sync_dist=True,
         )
         return loss
@@ -42,9 +53,9 @@ class BaseModel(LightningModule, ABC):
     def validation_step(self, batch, batch_idx) -> Tensor:
         images = batch[0].to(self.device)
         targets = batch[1].to(self.device)
+        targets = one_hot(targets.long(), self.num_classes).movedim(-1, 1)
         preds = self.forward(images)
-        preds = clamp(preds, min=1e-7)
-        loss = self.loss_function(preds, targets)
+        loss = self.loss_function(preds, targets.float())
         self.log(
             "valid/loss",
             loss,
@@ -52,11 +63,27 @@ class BaseModel(LightningModule, ABC):
             on_epoch=True,
             sync_dist=True,
         )
-        gcd = self.gcd(preds.argmax(1), targets)
-        self.log("Generalized Dice Score", gcd, on_epoch=True)
-        miou = self.miou(preds.argmax(1), targets)
-        self.log("mIoU Score", miou, on_epoch=True)
+        if self.loss_function._get_name() in ["DACLoss", "IDACLoss"]:
+            preds = preds[:, :-1, :, :]
+        preds = one_hot(preds.argmax(1), self.num_classes).movedim(-1, 1)
+        gdc = self.gdc(preds, targets)
+        self.log("valid/GDC", gdc, on_epoch=True, sync_dist=True)
+        miou = self.miou(preds, targets)
+        self.log("valid/mIoU", miou, on_epoch=True, sync_dist=True)
         return loss
+
+    def test_step(self, batch, batch_idx):
+        images = batch[0].to(self.device)
+        targets = batch[1].to(self.device)
+        targets = one_hot(targets.long(), self.num_classes).movedim(-1, 1)
+        preds = self.forward(images)
+        if self.loss_function._get_name() in ["DACLoss", "IDACLoss"]:
+            preds = preds[:, :-1, :, :]
+        preds = one_hot(preds.argmax(1), self.num_classes).movedim(-1, 1)
+        gdc = self.gdc(preds, targets)
+        self.log("test/GDC", gdc, sync_dist=True)
+        miou = self.miou(preds, targets)
+        self.log("test/mIoU", miou, sync_dist=True)
 
     def configure_optimizers(self):
         return self.optimizer(self.parameters(), **self.optimizer_args)
