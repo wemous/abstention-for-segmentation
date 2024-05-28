@@ -2,7 +2,7 @@ from abc import ABC, abstractmethod
 from importlib import import_module
 
 from lightning import LightningModule
-from torch import Tensor
+from torch import Tensor, clamp
 
 
 class BaseModel(LightningModule, ABC):
@@ -22,6 +22,7 @@ class BaseModel(LightningModule, ABC):
         images = batch[0].to(self.device)
         targets = batch[1].to(self.device)
         preds = self.forward(images)
+        preds = clamp(preds, min=1e-7)
         loss = self.loss_function(preds, targets)
         self.log(
             "training loss",
@@ -36,6 +37,7 @@ class BaseModel(LightningModule, ABC):
         images = batch[0].to(self.device)
         targets = batch[1].to(self.device)
         preds = self.forward(images)
+        preds = clamp(preds, min=1e-7)
         loss = self.loss_function(preds, targets)
         self.log(
             "validation loss",
