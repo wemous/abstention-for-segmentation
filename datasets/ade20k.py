@@ -16,18 +16,34 @@ from tqdm import tqdm
 DATA_PATH = "/data/wesam/datasets/ADE20K/"
 
 
+def mask_to_setup(mask: Tensor, setup: int) -> Tensor:
+    if setup == 1:
+        mask = mask
+    if setup == 2:
+        mask[mask > 76] = 0
+    if setup == 3:
+        mask[mask > 21] = 0
+    return mask
+
+
 class ADE20K(Dataset):
-    def __init__(self, train=True, image_size: "tuple[int, int]" = (480, 512)):
+    def __init__(
+        self, split: int, setup: int, image_size: "tuple[int, int]" = (480, 512)
+    ):
         super().__init__()
-        split = "training" if train else "validation"
+        assert split >= 0 and split <= 2
+        assert setup >= 1 and setup <= 3
+        self.setup = setup
+        self.num_classes = {1: 151, 2: 77, 3: 22}
+        split_ids = {0: "training", 1: "validation", 2: "testing"}
         trasnformed_path = join(DATA_PATH, f"transformed_{image_size[0]}_{image_size[1]}")
 
-        image_folder = join(DATA_PATH, "images", split)
-        transformed_image_folder = join(trasnformed_path, "images", split)
+        image_folder = join(DATA_PATH, "images", split_ids[split])
+        transformed_image_folder = join(trasnformed_path, "images", split_ids[split])
         if not exists(transformed_image_folder):
             makedirs(transformed_image_folder)
             file_names = sorted(listdir(image_folder))
-            for f in tqdm(file_names, desc=f"transforming {split} images"):
+            for f in tqdm(file_names, desc=f"transforming {split_ids[split]} images"):
                 image = to_dtype(
                     to_image(Image.open(join(image_folder, f))),
                     torch.float,
@@ -38,12 +54,14 @@ class ADE20K(Dataset):
                 image = resize(image, image_size, antialias=True)  # type: ignore
                 torch.save(image, join(transformed_image_folder, f[:-4] + ".pt"))
 
-        mask_folder = join(DATA_PATH, "annotations", split)
-        transformed_mask_folder = join(trasnformed_path, "annotations", split)
+        mask_folder = join(DATA_PATH, "annotations", split_ids[split])
+        transformed_mask_folder = join(trasnformed_path, "annotations", split_ids[split])
         if not exists(transformed_mask_folder):
             makedirs(transformed_mask_folder)
             file_names = sorted(listdir(mask_folder))
-            for f in tqdm(file_names, desc=f"transforming {split} annotations"):
+            for f in tqdm(
+                file_names, desc=f"transforming {split_ids[split]} annotations"
+            ):
                 mask = pil_to_tensor(Image.open(join(mask_folder, f)))
                 mask = resize(mask, image_size, antialias=True).squeeze().long()  # type: ignore
                 torch.save(mask, join(transformed_mask_folder, f[:-4] + ".pt"))
@@ -63,4 +81,5 @@ class ADE20K(Dataset):
     def __getitem__(self, index) -> "tuple[Tensor, Tensor]":
         image = torch.load(self.image_paths[index])
         mask = torch.load(self.mask_paths[index])
+        mask = mask_to_setup(mask, self.setup)
         return image, mask
