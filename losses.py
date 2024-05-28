@@ -51,7 +51,6 @@ class DACLoss(nn.Module):
         train: bool = False,
         epoch: int = 0,
     ):
-        assert preds.shape[1] == targets.shape[1] + 1
         ce_loss = self.ce(preds[:, :-1, :, :], targets)
 
         if train:
@@ -119,20 +118,15 @@ class SCELoss(nn.Module):
         self.num_classes = num_classes
         self.cross_entropy = nn.CrossEntropyLoss()
 
-    def forward(self, preds: Tensor, targets: Tensor) -> Tensor:
+    def forward(self, preds: Tensor, targets: Tensor):
         # CCE
         ce = self.cross_entropy(preds, targets)
 
         # RCE
+        if targets.ndim < 4:
+            targets = F.one_hot(targets, self.num_classes).movedim(-1, 1).float()
         preds = F.softmax(preds, dim=1)
-        targets = (
-            F.one_hot(targets, self.num_classes)
-            .float()
-            .to(preds.device)
-            .permute(0, 3, 1, 2)
-        )
-        log_targets = torch.clamp(torch.log(targets), min=self.A)
-        rce = (-1 * torch.sum(preds * log_targets, dim=1)).mean()
+        rce = self.cross_entropy(-targets * self.A, preds)
 
         loss = self.alpha * ce + self.beta * rce
         return loss
@@ -156,12 +150,8 @@ class FocalLoss(nn.Module):
         self.num_classes = num_classes
 
     def forward(self, preds: Tensor, targets: Tensor) -> Tensor:
-        targets = (
-            F.one_hot(targets, self.num_classes)
-            .float()
-            .to(preds.device)
-            .permute(0, 3, 1, 2)
-        )
+        if targets.ndim < 4:
+            targets = F.one_hot(targets, self.num_classes).movedim(-1, 1).float()
         return sigmoid_focal_loss(
             inputs=preds,
             targets=targets,
@@ -169,3 +159,49 @@ class FocalLoss(nn.Module):
             gamma=self.gamma,
             reduction="mean",
         )
+
+
+class SFLoss(nn.Module):
+    """Apply Symmetric Focal Loss"""
+
+    def __init__(
+        self,
+        alpha: float = 0.1,
+        beta: float = 1,
+        A: float = -6,
+        gamma: float = 2,
+        focal_alpha: float = 0.25,
+        num_classes: int = 151,
+        *args,
+        **kwargs,
+    ):
+        super().__init__(*args, **kwargs)
+        assert (
+            alpha > 0
+            and beta >= 0
+            and A < 0
+            and gamma >= 0
+            and focal_alpha >= 0
+            and focal_alpha <= 1
+        )
+        self.alpha = alpha
+        self.beta = beta
+        self.A = A
+        self.gamma = gamma
+        self.focal_alpha = focal_alpha
+        self.num_classes = num_classes
+        self.focal = FocalLoss(gamma=gamma, alpha=focal_alpha, num_classes=num_classes)
+
+    def forward(self, preds: Tensor, targets: Tensor):
+        # focal
+        ce = self.focal(preds, targets)
+
+        # reverse focal
+        if targets.ndim < 4:
+            targets = F.one_hot(targets, self.num_classes).movedim(-1, 1).float()
+        targets = (targets - 0.5) * 2
+        preds = F.sigmoid(preds)
+        rce = self.focal(-targets * self.A, preds)
+
+        loss = self.alpha * ce + self.beta * rce
+        return loss

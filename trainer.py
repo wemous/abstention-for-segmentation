@@ -3,6 +3,8 @@ from random import seed
 
 import lightning as pl
 import torch
+import wandb
+from lightning.pytorch.loggers import WandbLogger
 from torch.utils.data import DataLoader
 from yaml import full_load
 
@@ -15,7 +17,6 @@ torch.manual_seed(config["seed"])
 torch.cuda.manual_seed_all(config["seed"])
 torch.set_float32_matmul_precision("high")
 
-run_name = config["run"]
 dataset_name = config["dataset"]
 image_size = config["image_size"]
 transforms = config["transforms"]
@@ -36,7 +37,6 @@ model_name = model_config["name"]
 model_args = model_config["args"]
 model = getattr(import_module(module), model_name)(num_classes, **model_args)
 
-
 train_loader = DataLoader(
     train_dataset,
     batch_size=batch_size,
@@ -50,6 +50,15 @@ valid_loader = DataLoader(
     drop_last=False,
 )
 
+run_name = f"{model._get_name().lower()}-{dataset_name}-{model.loss_function._get_name()[:-4].lower()}"
+
+# logger = WandbLogger(
+#     name=run_name,
+#     project="DAC Segmentation",
+# )
+
+# wandb.login()
+
 trainer = pl.Trainer(
     devices=config["devices"],
     max_epochs=config["max_epochs"],
@@ -57,7 +66,11 @@ trainer = pl.Trainer(
     enable_model_summary=False,
     enable_progress_bar=True,
     logger=False,
+    # logger=logger,
 )
 
-# trainer.fit(model, train_loader, valid_loader)
-trainer.fit(model, valid_loader)
+
+trainer.fit(model, train_loader, valid_loader)
+# trainer.fit(model, valid_loader)
+
+# wandb.finish()
