@@ -11,7 +11,7 @@ from torchvision.transforms.v2.functional import (
     to_image,
 )
 
-DATA_PATH = "/data/wesam/thesis/DSAD/"
+DATA_PATH = "/data/wesam/datasets/DSAD/"
 
 organs = [
     "abdominal_wall",
