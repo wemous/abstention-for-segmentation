@@ -32,24 +32,59 @@ TRANSFORMS = {
     "equalize": equalize_image,
     "flip": vertical_flip_image,
     "validation": Identity(),
+    "testing": Identity(),
 }
+
+setup_2_class_map = {
+    7: [8, 10, 20, 27, 32],
+    8: [9, 22],
+    9: [11, 33],
+    10: [12, 28],
+    11: [13, 21],
+    12: [14, 24],
+    13: [15, 18],
+    14: [16, 23],
+    15: [17],
+    16: [19],
+    17: [25, 26, 29, 30, 31, 34, 35],
+}
+
+
+def mask_to_setup(mask: Tensor, setup: int) -> Tensor:
+    if setup == 1:
+        mask[mask > 7] = 7
+    if setup == 2:
+        for k, values in setup_2_class_map.items():
+            for v in values:
+                mask[mask == v] = k
+    if setup == 3:
+        mask[mask > 25] = 25
+    return mask
 
 
 class CaDIS(Dataset):
     def __init__(
         self,
-        train=True,
-        transforms: Iterable = {"original"},
+        split: int,
+        setup: int,
+        transforms: Iterable = {},
         image_size=(270, 480),
     ):
         super().__init__()
+        assert split >= 0 and split <= 2
+        assert setup >= 1 and split <= 3
         assert set(TRANSFORMS.keys()).issuperset(transforms)
-        # add resize transform if passed an empty list
-        transforms = transforms if transforms else {"original"}
-        # use only resize transform for validation
-        transforms = set(transforms) if train else {"validation"}
-        split = "training" if train else "validation"
-
+        self.setup = setup
+        self.num_classes = {1: 8, 2: 18, 3: 26}
+        split_ids = {0: "training", 1: "validation", 2: "testing"}
+        # add resize transform if passed an empty set
+        if not transforms:
+            if split == 0:
+                transforms = {"original"}
+            elif split == 1:
+                transforms = {"validation"}
+            if split == 2:
+                transforms = {"testing"}
         video_split = {
             "training": [
                 "Video01",
@@ -61,7 +96,6 @@ class CaDIS(Dataset):
                 "Video10",
                 "Video11",
                 "Video13",
-                "Video12",
                 "Video14",
                 "Video15",
                 "Video17",
@@ -74,14 +108,17 @@ class CaDIS(Dataset):
                 "Video25",
             ],
             "validation": [
-                "Video02",
                 "Video05",
                 "Video07",
                 "Video16",
+            ],
+            "testing": [
+                "Video02",
+                "Video12",
                 "Video22",
             ],
         }
-        videos = video_split[split]
+        videos = video_split[split_ids[split]]
         trasnformed_path = join(DATA_PATH, f"transformed_{image_size[0]}_{image_size[1]}")
 
         for tf in transforms:
@@ -113,8 +150,7 @@ class CaDIS(Dataset):
 
                     for n in mask_names:
                         mask = pil_to_tensor(Image.open(join(mask_source, n)))
-                        mask[mask > 6] = 7
-                        mask = resize(mask, image_size, antialias=True)  # type: ignore
+                        mask = resize(mask, image_size, antialias=True).squeeze().long()  # type: ignore
                         if tf == "flip":
                             mask = TRANSFORMS["flip"](mask)
                         torch.save(mask, join(mask_target, n[:-4] + ".pt"))
@@ -144,4 +180,5 @@ class CaDIS(Dataset):
     def __getitem__(self, index) -> "tuple[Tensor, Tensor]":
         image = torch.load(self.image_paths[index])
         mask = torch.load(self.mask_paths[index])
+        mask = mask_to_setup(mask, self.setup)
         return image, mask
