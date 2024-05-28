@@ -1,0 +1,26 @@
+run: unet
+seed: 13
+dataset: ade20k
+# dataset: cadis
+# image_size: !!python/tuple [480, 512]
+image_size: [480, 512]
+# transforms: ["blur", "elastic", "jitter", "equalize", "flip"]
+transforms: []
+batch_size: 16
+
+model:
+  module: models
+  name: UNet
+  args:
+    loss:
+      module: losses
+      name: CELoss
+      args: {}
+    optimizer:
+      module: torch.optim
+      name: AdamW
+      args:
+        lr: 0.001
+
+max_epochs: 10
+devices: 1

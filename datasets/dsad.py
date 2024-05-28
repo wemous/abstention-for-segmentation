@@ -35,7 +35,7 @@ organs_id_map = {
 
 
 class DSAD_Organ(Dataset):
-    def __init__(self, organ: str, image_size: tuple[int, int] = (256, 320)):
+    def __init__(self, organ: str, image_size: "tuple[int, int]" = (256, 320)):
         super().__init__()
         self.image_size = image_size
         organ_path = join(DATA_PATH, organ)
@@ -62,7 +62,7 @@ class DSAD_Organ(Dataset):
     def __len__(self):
         return len(self.image_paths)
 
-    def __getitem__(self, index) -> tuple[Tensor, Tensor]:
+    def __getitem__(self, index) -> "tuple[Tensor, Tensor]":
         image = to_dtype(
             to_image(Image.open(self.image_paths[index])),
             dtype=torch.float,
@@ -81,7 +81,7 @@ class DSAD_Organ(Dataset):
 
 
 class DSAD_Multi_train(Dataset):
-    def __init__(self, image_size: tuple[int, int] = (256, 320)):
+    def __init__(self, image_size: "tuple[int, int]" = (256, 320)):
         super().__init__()
         self.image_size = image_size
         self.image_paths, self.mask_paths, self.labels = [], [], []
@@ -109,7 +109,7 @@ class DSAD_Multi_train(Dataset):
     def __len__(self):
         return len(self.image_paths)
 
-    def __getitem__(self, index) -> tuple[Tensor, Tensor, str]:
+    def __getitem__(self, index) -> "tuple[Tensor, Tensor, str]":
         image = to_dtype(
             to_image(Image.open(self.image_paths[index])),
             dtype=torch.float,
@@ -129,7 +129,7 @@ class DSAD_Multi_train(Dataset):
 
 
 class DSAD_Multi_valid(Dataset):
-    def __init__(self, image_size: tuple[int, int] = (256, 320)):
+    def __init__(self, image_size: "tuple[int, int]" = (256, 320)):
         super().__init__()
         self.image_size = image_size
         organ_path = join(DATA_PATH, "multilabel")
@@ -156,7 +156,7 @@ class DSAD_Multi_valid(Dataset):
     def __len__(self):
         return len(self.image_paths)
 
-    def __getitem__(self, index) -> tuple[Tensor, Tensor]:
+    def __getitem__(self, index) -> "tuple[Tensor, Tensor]":
         image = to_dtype(
             to_image(Image.open(self.image_paths[index])),
             dtype=torch.float,
