@@ -1,16 +1,24 @@
 seed: 13
-dataset: ade20k
-# dataset: cadis
-# image_size: !!python/tuple [480, 512]
-image_size: [480, 512]
-# image_size: [270, 480]
+max_epochs: 30
+devices: 3
+
+# dataset: ade20k
+# image_size: [480, 512]
+# batch_size: 16
+# setup: 2
+
+dataset: cadis
+image_size: [270, 480]
+batch_size: 64
+setup: 1
+transforms: []
 # transforms: ["original", "blur", "elastic", "jitter", "equalize", "flip"]
-transforms: ["original", "blur", "elastic", "flip"]
-batch_size: 16
+# transforms: ["original", "blur", "elastic", "flip"]
 
 model:
   module: models
-  name: UNet
+  # name: UNet
+  name: DeepLabV3
   args:
     loss:
       module: losses
@@ -29,7 +37,4 @@ model:
       module: torch.optim
       name: AdamW
       args:
-        lr: !!float 1e-4
-
-max_epochs: 30
-devices: 3
+        lr: !!float 1e-3

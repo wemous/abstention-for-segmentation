@@ -83,6 +83,7 @@ trainer = pl.Trainer(
     enable_checkpointing=False,
     enable_model_summary=False,
     enable_progress_bar=True,
+    log_every_n_steps=len(train_loader) // 5,
     logger=logger,
 )
 
