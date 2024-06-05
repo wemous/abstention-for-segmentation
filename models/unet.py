@@ -9,7 +9,12 @@ from models.base import BaseModel
 
 class UNet(BaseModel):
     def __init__(self, num_classes: int, loss: dict, optimizer: dict, **kwargs):
-        super().__init__(num_classes, loss, optimizer, **kwargs)
+        super().__init__(
+            num_classes=num_classes,
+            loss=loss,
+            optimizer=optimizer,
+            model_name="UNet",
+        )
         upsample_cfg = {"type": InterpConv}
         self.unet = U(upsample_cfg=upsample_cfg, **kwargs)
         self.out_conv = Conv2d(self.unet.base_channels, num_classes, kernel_size=1)

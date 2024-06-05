@@ -6,8 +6,17 @@ from models.base import BaseModel
 
 class DeepLabV3(BaseModel):
     def __init__(self, num_classes: int, loss: dict, optimizer: dict, **kwargs):
-        super().__init__(num_classes, loss, optimizer, **kwargs)
-        self.net = deeplabv3_resnet50(weights_backbone="DEFAULT", num_classes=num_classes)
+        super().__init__(
+            num_classes=num_classes,
+            loss=loss,
+            optimizer=optimizer,
+            model_name="DeepLabV3",
+        )
+        self.net = deeplabv3_resnet50(
+            weights_backbone="DEFAULT",
+            num_classes=num_classes,
+            **kwargs,
+        )
 
     def forward(self, x: Tensor) -> Tensor:
         out = self.net(x)

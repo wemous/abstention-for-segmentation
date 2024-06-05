@@ -8,8 +8,8 @@ from torchmetrics.segmentation import GeneralizedDiceScore, MeanIoU
 
 
 class BaseModel(LightningModule, ABC):
-    def __init__(self, num_classes: int, loss: dict, optimizer: dict, **kwargs):
-        super().__init__(**kwargs)
+    def __init__(self, num_classes: int, loss: dict, optimizer: dict, model_name: str):
+        super().__init__()
         num_classes = num_classes - 1 if loss["name"] == "DACLoss" else num_classes
         self.num_classes = num_classes
         self.loss_function = getattr(import_module(loss["module"]), loss["name"])(
@@ -20,6 +20,7 @@ class BaseModel(LightningModule, ABC):
 
         self.gdc = GeneralizedDiceScore(num_classes).to(self.device)
         self.miou = MeanIoU(num_classes).to(self.device)
+        self.model_name = model_name
 
         self.save_hyperparameters()
 

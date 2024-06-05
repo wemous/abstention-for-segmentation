@@ -4,3 +4,4 @@ datasets/__pycache__/
 *.ipynb
 wandb/
 unifiedparsing/
+lightning_logs/
