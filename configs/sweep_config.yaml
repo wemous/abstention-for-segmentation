@@ -1,6 +1,7 @@
-# models: [UNet, DeepLabV3]
-models: [DeepLabV3]
-losses: [CELoss, DACLoss, SCELoss, FocalLoss, SFLoss]
+models: [UNet, DeepLabV3, UPerNet]
+# models: [DeepLabV3]
+# losses: [CELoss, DACLoss, SCELoss, FocalLoss, SFLoss]
+losses: [CELoss, DACLoss, SCELoss]
 
 optimizers:
   [

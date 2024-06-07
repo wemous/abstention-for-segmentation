@@ -10,7 +10,7 @@ from yaml import full_load
 import wandb
 from datasets import ADE20K, CaDIS
 
-config = full_load(open("sweep_config.yaml"))
+config = full_load(open("configs/sweep_config.yaml"))
 pl.seed_everything(config["seed"])
 torch.set_float32_matmul_precision("high")
 

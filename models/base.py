@@ -2,7 +2,7 @@ from abc import ABC, abstractmethod
 from importlib import import_module
 
 from lightning import LightningModule
-from torch import Tensor
+from torch import Tensor, softmax
 from torch.nn.functional import one_hot
 from torchmetrics.segmentation import GeneralizedDiceScore, MeanIoU
 
@@ -18,7 +18,7 @@ class BaseModel(LightningModule, ABC):
         self.optimizer = getattr(import_module(optimizer["module"]), optimizer["name"])
         self.optimizer_args = optimizer["args"]
 
-        self.gdc = GeneralizedDiceScore(num_classes).to(self.device)
+        self.gds = GeneralizedDiceScore(num_classes).to(self.device)
         self.miou = MeanIoU(num_classes).to(self.device)
         self.model_name = model_name
 
@@ -66,9 +66,10 @@ class BaseModel(LightningModule, ABC):
         )
         if self.loss_function._get_name() in ["DACLoss", "IDACLoss"]:
             preds = preds[:, :-1, :, :]
-        preds = one_hot(preds.argmax(1), self.num_classes).movedim(-1, 1)
-        gdc = self.gdc(preds, targets)
-        self.log("valid/GDC", gdc, on_epoch=True, sync_dist=True)
+        preds = softmax(preds, 1).argmax(1).detach()
+        preds = one_hot(preds, self.num_classes).movedim(-1, 1)
+        gds = self.gds(preds, targets)
+        self.log("valid/GDS", gds, on_epoch=True, sync_dist=True)
         miou = self.miou(preds, targets)
         self.log("valid/mIoU", miou, on_epoch=True, sync_dist=True)
         return loss
@@ -80,9 +81,10 @@ class BaseModel(LightningModule, ABC):
         preds = self.forward(images)
         if self.loss_function._get_name() in ["DACLoss", "IDACLoss"]:
             preds = preds[:, :-1, :, :]
-        preds = one_hot(preds.argmax(1), self.num_classes).movedim(-1, 1)
-        gdc = self.gdc(preds, targets)
-        self.log("test/GDC", gdc, sync_dist=True)
+        preds = softmax(preds, 1).argmax(1).detach()
+        preds = one_hot(preds, self.num_classes).movedim(-1, 1)
+        gds = self.gds(preds, targets)
+        self.log("test/GDS", gds, sync_dist=True)
         miou = self.miou(preds, targets)
         self.log("test/mIoU", miou, sync_dist=True)
 

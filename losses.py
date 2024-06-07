@@ -6,8 +6,8 @@ from torchvision.ops.focal_loss import sigmoid_focal_loss
 
 
 class CELoss(nn.Module):
-    def __init__(self, num_classes=None, *args, **kwargs):
-        super().__init__(*args, **kwargs)
+    def __init__(self, **kwargs):
+        super().__init__()
         self.ce = nn.CrossEntropyLoss()
 
     def forward(self, preds: Tensor, targets: Tensor) -> Tensor:
@@ -24,11 +24,9 @@ class DACLoss(nn.Module):
         alpha_final=1.0,
         alpha_init_factor=64,
         mu=0.05,
-        num_classes=None,
-        *args,
         **kwargs,
     ):
-        super().__init__(*args, **kwargs)
+        super().__init__()
         self.ce = nn.CrossEntropyLoss()
 
         # fixed values
@@ -108,10 +106,9 @@ class SCELoss(nn.Module):
         beta: float = 1,
         A: float = -6,
         num_classes: int = 151,
-        *args,
         **kwargs,
     ):
-        super().__init__(*args, **kwargs)
+        super().__init__()
         assert alpha > 0 and beta >= 0 and A < 0
         self.alpha = alpha
         self.beta = beta
@@ -142,10 +139,9 @@ class FocalLoss(nn.Module):
         gamma: float = 2,
         alpha: float = 0.25,
         num_classes: int = 151,
-        *args,
         **kwargs,
     ):
-        super().__init__(*args, **kwargs)
+        super().__init__()
         assert gamma >= 0 and alpha >= 0 and alpha <= 1
         self.gamma = gamma
         self.alpha = alpha
@@ -174,10 +170,9 @@ class SFLoss(nn.Module):
         gamma: float = 2,
         focal_alpha: float = 0.25,
         num_classes: int = 151,
-        *args,
         **kwargs,
     ):
-        super().__init__(*args, **kwargs)
+        super().__init__()
         assert (
             alpha > 0
             and beta >= 0
