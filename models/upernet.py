@@ -6,7 +6,15 @@ from models.base import BaseModel
 
 
 class UPerNet(BaseModel):
-    def __init__(self, num_classes: int, loss: dict, optimizer: dict, **kwargs):
+    def __init__(
+        self,
+        num_classes: int,
+        loss: dict,
+        optimizer: dict,
+        backbone: str = "microsoft/resnet-50",
+        use_pretrained_backbone: bool = True,
+        **kwargs
+    ):
         super().__init__(
             num_classes=num_classes,
             loss=loss,
@@ -16,6 +24,8 @@ class UPerNet(BaseModel):
         )
         self.net = UperNetForSemanticSegmentation(
             UperNetConfig(
+                backbone=backbone,
+                use_pretrained_backbone=use_pretrained_backbone,
                 use_auxiliary_head=False,
                 num_labels=num_classes,
                 **kwargs,

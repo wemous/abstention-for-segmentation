@@ -1,37 +1,51 @@
-models: [UNet, DeepLabV3, UPerNet]
-# models: [DeepLabV3]
-# losses: [CELoss, DACLoss, SCELoss, FocalLoss, SFLoss]
-losses: [CELoss, DACLoss, SCELoss]
-
-optimizers:
-  [
-    {
-      "name": "SGD",
-      "args":
-        { "lr": !!float 1e-3, "momentum": 0.9, "weight_decay": !!float 1e-2 },
-    },
-    { "name": "AdamW", "args": { "lr": !!float 1e-3 } },
-  ]
-
-# datasets
-datasets:
-  [
-    {
-      "name": "cadis",
-      "image_size": [270, 480],
-      "batch_size": 64,
-      "setup": 3,
-      "max_epochs": 50,
-      "transforms": [],
-    },
-    {
-      "name": "ade20k",
-      "image_size": [480, 512],
-      "batch_size": 16,
-      "setup": 2,
-      "max_epochs": 30,
-    },
-  ]
-
-seed: 13
-devices: 3
+program: sweep.py
+project: DAC Segmentation
+name: Main
+method: grid
+metric:
+  goal: maximize
+  name: test/mIoU
+parameters:
+  model:
+    values: [UNet, DeepLabV3, UPerNet]
+  dataset:
+    values:
+      [
+        {
+          "name": "cadis",
+          "image_size": [270, 480],
+          "batch_size": 64,
+          "setup": 1,
+          "max_epochs": 50,
+          "transforms": [],
+        },
+        {
+          "name": "ade20k",
+          "image_size": [480, 512],
+          "batch_size": 32,
+          "setup": 3,
+          "max_epochs": 20,
+        },
+      ]
+  loss:
+    values: [CELoss, DACLoss, SCELoss]
+    # value: DACLoss
+  optimizer:
+    values:
+      [
+        {
+          "module": "torch.optim",
+          "name": "SGD",
+          "args":
+            {
+              "lr": !!float 5e-3,
+              "momentum": 0.9,
+              "weight_decay": !!float 1e-2,
+            },
+        },
+        {
+          "module": "torch.optim",
+          "name": "AdamW",
+          "args": { "lr": !!float 5e-3 },
+        },
+      ]

@@ -1,13 +1,13 @@
 program: dac_sweep.py
 project: DAC Segmentation
-name: DAC parameters
+name: DAC parameters - UPerNet
 method: bayes
 metric:
   goal: maximize
   name: test/mIoU
 parameters:
   model:
-    value: UNet
+    value: UPerNet
   dataset:
     value: cadis
   lr:

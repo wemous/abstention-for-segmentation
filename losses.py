@@ -21,7 +21,7 @@ class DACLoss(nn.Module):
         self,
         max_epochs: int,
         warmup_epochs: int = 0,
-        alpha_final=1.0,
+        alpha_final=2.0,
         alpha_init_factor=64,
         mu=0.05,
         **kwargs,
@@ -31,7 +31,7 @@ class DACLoss(nn.Module):
 
         # fixed values
         self.max_epochs = max_epochs
-        self.warmup_epochs = warmup_epochs if warmup_epochs > 0 else max_epochs // 5
+        self.warmup_epochs = warmup_epochs if warmup_epochs > 0 else max_epochs // 10
         self.alpha_final = alpha_final
         self.alpha_init_factor = alpha_init_factor
         self.mu = mu
