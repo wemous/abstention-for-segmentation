@@ -27,7 +27,6 @@ class DACLoss(nn.Module):
         **kwargs,
     ):
         super().__init__()
-        self.ce = nn.CrossEntropyLoss()
 
         # fixed values
         self.max_epochs = max_epochs
@@ -47,26 +46,32 @@ class DACLoss(nn.Module):
         self,
         preds: Tensor,
         targets: Tensor,
-        train: bool = False,
+        training: bool = False,
         epoch: int = 0,
     ):
-        ce_loss = self.ce(preds[:, :-1, :, :], targets)
+        ce_loss = F.cross_entropy(preds[:, :-1, :, :], targets, reduction="none").mean(
+            dim=(-2, -1)
+        )
 
-        if train:
+        if not training:
+            return ce_loss.mean()
+        else:
             abstention_rate = (
                 (preds.argmax(dim=1) == preds.shape[1] - 1).float().mean().item()
             )
-            abstain = torch.exp(F.log_softmax(preds, dim=1))[:, -1, :, :].mean()
-            abstain = torch.min(
-                abstain,
+            abstention = torch.exp(F.log_softmax(preds, dim=1))[:, -1, :, :].mean(
+                dim=(-2, -1)
+            )
+            abstention = torch.min(
+                abstention,
                 torch.tensor(
                     [1 - self.epsilon],
-                    device=abstain.device,
+                    device=abstention.device,
                 ),
             )
 
             if epoch < self.warmup_epochs:
-                alpha_threshold = (1 - abstain.item()) * ce_loss.item()
+                alpha_threshold = ((1 - abstention) * ce_loss).mean().item()
                 # initialize the smoothed moving average of alpha threshold
                 if not self.alpha_thershold_smoothed:
                     self.alpha_thershold_smoothed = alpha_threshold
@@ -86,15 +91,66 @@ class DACLoss(nn.Module):
                     self.alpha_update_epoch = epoch
                 else:
                     if epoch > self.alpha_update_epoch:
-                        self.alpha += self.delta_alpha
+                        self.alpha += self.delta_alpha  # type: ignore
                         self.alpha_update_epoch = epoch
-                loss = (1 - abstain) * ce_loss - self.alpha * torch.log(1 - abstain)
-                # loss = (1 - abstain) * (
-                #     ce_loss + torch.log(1 - abstain)
-                # ) - self.alpha * torch.log(1 - abstain)
-            return loss, abstention_rate
+                loss = (1 - abstention) * ce_loss - self.alpha * torch.log(1 - abstention)
+                # loss = (1 - abstention) * (
+                #     ce_loss + torch.log(1 - abstention)
+                # ) - self.alpha * torch.log(1 - abstention)
+            return loss.mean(), abstention_rate
+
+
+class IDACLoss(nn.Module):
+    """Apply Informed Deep Abstaining Classifier Loss"""
+
+    def __init__(
+        self,
+        noise_rate: float = 0,
+        warmup_epochs: int = 10,
+        alpha=1,
+        **kwargs,
+    ):
+        super().__init__()
+        self.noise_rate = noise_rate
+        self.warmup_epochs = warmup_epochs
+        self.alpha = alpha
+        self.epsilon = 1e-7
+
+    def forward(
+        self,
+        preds: Tensor,
+        targets: Tensor,
+        training: bool = False,
+        epoch: int = 0,
+    ):
+        ce_loss = F.cross_entropy(preds[:, :-1, :, :], targets, reduction="none").mean(
+            dim=(-2, -1)
+        )
+
+        if not training:
+            return ce_loss.mean()
         else:
-            return ce_loss
+            abstention_rate = (
+                (preds.argmax(dim=1) == preds.shape[1] - 1).float().mean().item()
+            )
+            abstention = torch.exp(F.log_softmax(preds, dim=1))[:, -1, :, :].mean(
+                dim=(-2, -1)
+            )
+            abstention = torch.min(
+                abstention,
+                torch.tensor(
+                    1 - self.epsilon,
+                    device=abstention.device,
+                ),
+            )
+
+            if epoch < self.warmup_epochs:
+                loss = ce_loss
+            else:
+                loss = (1 - abstention) * ce_loss - self.alpha * (
+                    self.noise_rate - abstention.mean()
+                ) ** 2
+            return loss.mean(), abstention_rate
 
 
 class SCELoss(nn.Module):

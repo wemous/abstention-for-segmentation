@@ -10,7 +10,7 @@ from torchmetrics.segmentation import GeneralizedDiceScore, MeanIoU
 class BaseModel(LightningModule, ABC):
     def __init__(self, num_classes: int, loss: dict, optimizer: dict, model_name: str):
         super().__init__()
-        num_classes = num_classes - 1 if loss["name"] == "DACLoss" else num_classes
+        num_classes = num_classes - 1 if "DAC" in loss["name"] else num_classes
         self.num_classes = num_classes
         self.loss_function = getattr(import_module(loss["module"]), loss["name"])(
             **loss["args"]
@@ -32,11 +32,11 @@ class BaseModel(LightningModule, ABC):
         targets = batch[1].to(self.device)
         targets = one_hot(targets.long(), self.num_classes).movedim(-1, 1)
         preds = self.forward(images)
-        if self.loss_function._get_name() == "DACLoss":
+        if "DAC" in self.loss_function._get_name():
             loss, abstention_rate = self.loss_function(
                 preds,
                 targets.float(),
-                train=True,
+                training=True,
                 epoch=self.current_epoch,
             )
             self.log("abstention rate", abstention_rate, sync_dist=True)
@@ -64,7 +64,7 @@ class BaseModel(LightningModule, ABC):
             on_epoch=True,
             sync_dist=True,
         )
-        if self.loss_function._get_name() in ["DACLoss", "IDACLoss"]:
+        if "DAC" in self.loss_function._get_name():
             preds = preds[:, :-1, :, :]
         preds = softmax(preds, 1).argmax(1).detach()
         preds = one_hot(preds, self.num_classes).movedim(-1, 1)
@@ -79,7 +79,7 @@ class BaseModel(LightningModule, ABC):
         targets = batch[1].to(self.device)
         targets = one_hot(targets.long(), self.num_classes).movedim(-1, 1)
         preds = self.forward(images)
-        if self.loss_function._get_name() in ["DACLoss", "IDACLoss"]:
+        if "DAC" in self.loss_function._get_name():
             preds = preds[:, :-1, :, :]
         preds = softmax(preds, 1).argmax(1).detach()
         preds = one_hot(preds, self.num_classes).movedim(-1, 1)
