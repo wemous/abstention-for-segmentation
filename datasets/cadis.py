@@ -11,6 +11,7 @@ from torchvision.transforms.v2 import (
     ElasticTransform,
     GaussianBlur,
     Identity,
+    RandomRotation,
 )
 from torchvision.transforms.v2.functional import (
     equalize_image,
@@ -62,6 +63,17 @@ def mask_to_setup(mask: Tensor, setup: int) -> Tensor:
     return mask
 
 
+def make_noise(mask: Tensor, noise_rate) -> Tensor:
+    chance = torch.rand(1).item()
+    if chance > noise_rate:
+        return mask
+    else:
+        blur = GaussianBlur(kernel_size=[9, 9], sigma=10)
+        elastic = ElasticTransform()
+        rotate = RandomRotation(5)  # type: ignore
+        return rotate(blur(elastic(mask.unsqueeze(0)))).squeeze(0)
+
+
 class CaDIS(Dataset):
     def __init__(
         self,
@@ -69,12 +81,14 @@ class CaDIS(Dataset):
         setup: int,
         transforms: Iterable = {},
         image_size=(270, 480),
+        noise_rate=0.0,
     ):
         super().__init__()
         assert split >= 0 and split <= 2
         assert setup >= 1 and split <= 3
         assert set(TRANSFORMS.keys()).issuperset(transforms)
         self.setup = setup
+        self.noise_rate = noise_rate
         self.num_classes = {1: 8, 2: 18, 3: 26}
         split_ids = {0: "training", 1: "validation", 2: "testing"}
         # add resize transform if passed an empty set
@@ -180,5 +194,6 @@ class CaDIS(Dataset):
     def __getitem__(self, index) -> "tuple[Tensor, Tensor]":
         image = torch.load(self.image_paths[index])
         mask = torch.load(self.mask_paths[index])
+        mask = make_noise(mask, self.noise_rate)
         mask = mask_to_setup(mask, self.setup)
         return image, mask

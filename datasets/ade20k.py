@@ -5,6 +5,8 @@ import torch
 from PIL import Image
 from torch import Tensor
 from torch.utils.data import Dataset
+
+from torchvision.transforms.v2 import GaussianBlur, ElasticTransform, RandomRotation
 from torchvision.transforms.v2.functional import (
     pil_to_tensor,
     resize,
@@ -26,14 +28,30 @@ def mask_to_setup(mask: Tensor, setup: int) -> Tensor:
     return mask
 
 
+def make_noise(mask: Tensor, noise_rate) -> Tensor:
+    chance = torch.rand(1).item()
+    if chance > noise_rate:
+        return mask
+    else:
+        blur = GaussianBlur(kernel_size=[9, 9], sigma=10)
+        elastic = ElasticTransform()
+        rotate = RandomRotation(5)  # type: ignore
+        return rotate(blur(elastic(mask.unsqueeze(0)))).squeeze(0)
+
+
 class ADE20K(Dataset):
     def __init__(
-        self, split: int, setup: int, image_size: "tuple[int, int]" = (480, 512)
+        self,
+        split: int,
+        setup: int,
+        image_size: "tuple[int, int]" = (480, 512),
+        noise_rate=0.0,
     ):
         super().__init__()
         assert split >= 0 and split <= 2
         assert setup >= 1 and setup <= 3
         self.setup = setup
+        self.noise_rate = noise_rate
         self.num_classes = {1: 151, 2: 77, 3: 22}
         split_ids = {0: "training", 1: "validation", 2: "testing"}
         trasnformed_path = join(DATA_PATH, f"transformed_{image_size[0]}_{image_size[1]}")
@@ -81,5 +99,6 @@ class ADE20K(Dataset):
     def __getitem__(self, index) -> "tuple[Tensor, Tensor]":
         image = torch.load(self.image_paths[index])
         mask = torch.load(self.mask_paths[index])
+        mask = make_noise(mask, self.noise_rate)
         mask = mask_to_setup(mask, self.setup)
         return image, mask

@@ -16,8 +16,7 @@ parameters:
           "image_size": [270, 480],
           "batch_size": 64,
           "setup": 1,
-          "max_epochs": 50,
-          "transforms": [],
+          "max_epochs": 30,
         },
         {
           "name": "ade20k",
