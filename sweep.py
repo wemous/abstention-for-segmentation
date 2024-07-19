@@ -17,6 +17,8 @@ wandb.login()
 def main():
     run = wandb.init()
     config = wandb.config
+
+    noise_rate = config.noise_rate
     dataset = config.dataset
     setup = dataset["setup"]
     image_size = dataset["image_size"]
@@ -24,13 +26,23 @@ def main():
     max_epochs = dataset["max_epochs"]
 
     if dataset["name"] == "ade20k":
-        train_dataset = ADE20K(split=0, setup=setup)
-        valid_dataset = ADE20K(split=1, setup=setup)
-        test_dataset = ADE20K(split=2, setup=setup)
+        train_dataset = ADE20K(
+            split=0,
+            setup=setup,
+            image_size=image_size,
+            noise_rate=noise_rate,
+        )
+        valid_dataset = ADE20K(split=1, setup=setup, image_size=image_size)
+        test_dataset = ADE20K(split=2, setup=setup, image_size=image_size)
     elif dataset["name"] == "cadis":
-        train_dataset = CaDIS(split=0, setup=setup)
-        valid_dataset = CaDIS(split=1, setup=setup)
-        test_dataset = CaDIS(split=2, setup=setup)
+        train_dataset = CaDIS(
+            split=0,
+            setup=setup,
+            image_size=image_size,
+            noise_rate=noise_rate,
+        )
+        valid_dataset = CaDIS(split=1, setup=setup, image_size=image_size)
+        test_dataset = CaDIS(split=2, setup=setup, image_size=image_size)
 
     train_loader = DataLoader(
         train_dataset,
@@ -55,13 +67,20 @@ def main():
     )
 
     num_classes = train_dataset.num_classes[setup]
-    is_dac = config.loss == "DACLoss"
-    num_classes = num_classes + 1 if is_dac else num_classes
+
+    if config.loss == "DACLoss":
+        loss_args = {"max_epochs": max_epochs}
+        num_classes += 1
+    elif config.loss == "IDACLoss":
+        loss_args = {"noise_rate": noise_rate, "warmup_epochs": max_epochs // 10}
+        num_classes += 1
+    else:
+        loss_args = {}
 
     loss_config = {
         "module": "losses",
         "name": config.loss,
-        "args": {"max_epochs": max_epochs} if is_dac else {},
+        "args": loss_args,
     }
 
     model = getattr(import_module("models"), config.model)(
@@ -77,7 +96,7 @@ def main():
         enable_checkpointing=False,
         enable_model_summary=False,
         enable_progress_bar=True,
-        log_every_n_steps=len(train_loader) // 5,
+        log_every_n_steps=len(train_loader) // 4 if dataset["name"] == "cadis" else None,
         logger=logger,
     )
 

@@ -1,50 +1,51 @@
 program: sweep.py
 project: DAC Segmentation
-name: Main
+name: noise-unet-cadis
 method: grid
 metric:
   goal: maximize
   name: test/mIoU
 parameters:
   model:
-    values: [UNet, DeepLabV3, UPerNet]
+    # values: [UNet, DeepLabV3, UPerNet]
+    values: [UNet]
   dataset:
-    values:
-      [
+    values: [
         {
           "name": "cadis",
           "image_size": [270, 480],
-          "batch_size": 64,
+          "batch_size": 80,
           "setup": 1,
           "max_epochs": 30,
         },
-        {
-          "name": "ade20k",
-          "image_size": [480, 512],
-          "batch_size": 32,
-          "setup": 3,
-          "max_epochs": 20,
-        },
+        # {
+        #   "name": "ade20k",
+        #   "image_size": [480, 512],
+        #   "batch_size": 32,
+        #   "setup": 3,
+        #   "max_epochs": 20,
+        # },
       ]
+  noise_rate:
+    values: [0, 0.05, 0.1, 0.2, 0.35, 0.5]
   loss:
-    values: [CELoss, DACLoss, SCELoss]
-    # value: DACLoss
+    values: [CELoss, DACLoss, IDACLoss, SCELoss]
   optimizer:
-    values:
-      [
+    values: [
         {
           "module": "torch.optim",
           "name": "SGD",
           "args":
             {
-              "lr": !!float 5e-3,
+              "lr": !!float 0.1,
               "momentum": 0.9,
-              "weight_decay": !!float 1e-2,
+              "weight_decay": !!float 5e-4,
+              "nesterov": "True",
             },
         },
-        {
-          "module": "torch.optim",
-          "name": "AdamW",
-          "args": { "lr": !!float 5e-3 },
-        },
+        # {
+        #   "module": "torch.optim",
+        #   "name": "AdamW",
+        #   "args": { "lr": !!float 1e-3 },
+        # },
       ]
