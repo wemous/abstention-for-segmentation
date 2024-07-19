@@ -1,0 +1,52 @@
+program: idac_sweep.py
+project: DAC Segmentation
+name: idac-upernet-cadis-sgd
+method: grid
+metric:
+  goal: maximize
+  name: test/mIoU
+parameters:
+  model:
+    values: [UPerNet]
+  dataset:
+    values: [
+        {
+          "name": "cadis",
+          "image_size": [270, 480],
+          "batch_size": 256,
+          "setup": 1,
+          "max_epochs": 30,
+        },
+        # {
+        #   "name": "ade20k",
+        #   "image_size": [480, 512],
+        #   "batch_size": 32,
+        #   "setup": 3,
+        #   "max_epochs": 20,
+        # },
+      ]
+  optimizer:
+    values: [
+        {
+          "module": "torch.optim",
+          "name": "SGD",
+          "args":
+            {
+              "lr": !!float 0.1,
+              "momentum": 0.9,
+              "weight_decay": !!float 5e-4,
+              "nesterov": "True",
+            },
+        },
+        # {
+        #   "module": "torch.optim",
+        #   "name": "AdamW",
+        #   "args": { "lr": !!float 5e-3 },
+        # },
+      ]
+  noise_rate:
+    values: [0.05, 0.1, 0.2, 0.4]
+  warmup_rate:
+    values: [0.05, 0.1, 0.2]
+  alpha:
+    values: [1, 10, 20]

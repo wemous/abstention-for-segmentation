@@ -5,6 +5,7 @@ from lightning import LightningModule
 from torch import Tensor, softmax
 from torch.nn.functional import one_hot
 from torchmetrics.segmentation import GeneralizedDiceScore, MeanIoU
+from torch.optim.lr_scheduler import MultiplicativeLR
 
 
 class BaseModel(LightningModule, ABC):
@@ -15,7 +16,9 @@ class BaseModel(LightningModule, ABC):
         self.loss_function = getattr(import_module(loss["module"]), loss["name"])(
             **loss["args"]
         ).to(self.device)
-        self.optimizer = getattr(import_module(optimizer["module"]), optimizer["name"])
+        self.optimizer_class = getattr(
+            import_module(optimizer["module"]), optimizer["name"]
+        )
         self.optimizer_args = optimizer["args"]
 
         self.gds = GeneralizedDiceScore(num_classes).to(self.device)
@@ -89,4 +92,15 @@ class BaseModel(LightningModule, ABC):
         self.log("test/mIoU", miou, sync_dist=True)
 
     def configure_optimizers(self):
-        return self.optimizer(self.parameters(), **self.optimizer_args)
+        optimizer = self.optimizer_class(self.parameters(), **self.optimizer_args)
+        if self.optimizer_class.__name__ == "SGD":
+            return {
+                "optimizer": optimizer,
+                "lr_scheduler": {
+                    "scheduler": MultiplicativeLR(optimizer, lambda _: 0.1),
+                    "interval": "epoch",
+                    "frequency": self.trainer.max_epochs // 3,  # type: ignore
+                },
+            }
+        else:
+            return optimizer

@@ -107,7 +107,7 @@ class IDACLoss(nn.Module):
         self,
         noise_rate: float = 0,
         warmup_epochs: int = 10,
-        alpha=1,
+        alpha: float = 10,
         **kwargs,
     ):
         super().__init__()
@@ -147,7 +147,7 @@ class IDACLoss(nn.Module):
             if epoch < self.warmup_epochs:
                 loss = ce_loss
             else:
-                loss = (1 - abstention) * ce_loss - self.alpha * (
+                loss = (1 - abstention) * ce_loss + self.alpha * (
                     self.noise_rate - abstention.mean()
                 ) ** 2
             return loss.mean(), abstention_rate

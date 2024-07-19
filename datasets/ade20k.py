@@ -5,8 +5,6 @@ import torch
 from PIL import Image
 from torch import Tensor
 from torch.utils.data import Dataset
-
-from torchvision.transforms.v2 import GaussianBlur, ElasticTransform, RandomRotation
 from torchvision.transforms.v2.functional import (
     pil_to_tensor,
     resize,
@@ -26,17 +24,6 @@ def mask_to_setup(mask: Tensor, setup: int) -> Tensor:
     if setup == 3:
         mask[mask > 21] = 0
     return mask
-
-
-def make_noise(mask: Tensor, noise_rate) -> Tensor:
-    chance = torch.rand(1).item()
-    if chance > noise_rate:
-        return mask
-    else:
-        blur = GaussianBlur(kernel_size=[9, 9], sigma=10)
-        elastic = ElasticTransform()
-        rotate = RandomRotation(5)  # type: ignore
-        return rotate(blur(elastic(mask.unsqueeze(0)))).squeeze(0)
 
 
 class ADE20K(Dataset):
@@ -99,6 +86,9 @@ class ADE20K(Dataset):
     def __getitem__(self, index) -> "tuple[Tensor, Tensor]":
         image = torch.load(self.image_paths[index])
         mask = torch.load(self.mask_paths[index])
-        mask = make_noise(mask, self.noise_rate)
-        mask = mask_to_setup(mask, self.setup)
+        chance = torch.rand(1).item()
+        if chance > self.noise_rate:
+            mask = mask_to_setup(mask, self.setup)
+        else:
+            mask = torch.randint_like(mask, self.num_classes[self.setup])
         return image, mask
