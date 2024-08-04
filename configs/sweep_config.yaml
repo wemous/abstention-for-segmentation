@@ -1,35 +1,40 @@
 program: sweep.py
 project: DAC Segmentation
-name: noise-unet-cadis
+name: noise types
 method: grid
 metric:
   goal: maximize
   name: test/mIoU
 parameters:
   model:
-    # values: [UNet, DeepLabV3, UPerNet]
+    # values: [DeepLabV3, UPerNet]
     values: [UNet]
   dataset:
     values: [
         {
           "name": "cadis",
           "image_size": [270, 480],
-          "batch_size": 80,
+          "batch_size": 64,
           "setup": 1,
           "max_epochs": 30,
         },
         # {
         #   "name": "ade20k",
         #   "image_size": [480, 512],
-        #   "batch_size": 32,
+        #   "batch_size": 64,
         #   "setup": 3,
-        #   "max_epochs": 20,
+        #   "max_epochs": 30,
         # },
       ]
   noise_rate:
-    values: [0, 0.05, 0.1, 0.2, 0.35, 0.5]
+    # values: [0, 0.05, 0.1, 0.2, 0.35, 0.5]
+    values: [0.1, 0.25, 0.5]
+  noise_type:
+    values: ["blur", "elastic", "swap", "all"]
   loss:
-    values: [CELoss, DACLoss, IDACLoss, SCELoss]
+    # values: [CELoss, DACLoss, IDACLoss, SCELoss]
+    values: [CELoss, DACLoss, IDACLoss]
+    # values: [CELoss, DACLoss]
   optimizer:
     values: [
         {
@@ -46,6 +51,6 @@ parameters:
         # {
         #   "module": "torch.optim",
         #   "name": "AdamW",
-        #   "args": { "lr": !!float 1e-3 },
+        #   "args": { "lr": !!float 3e-4 },
         # },
       ]

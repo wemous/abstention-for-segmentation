@@ -21,6 +21,7 @@ from torchvision.transforms.v2.functional import (
     vertical_flip_image,
 )
 from tqdm import tqdm
+from .utils import make_noise, mask_to_setup_cadis
 
 DATA_PATH = "/data/wesam/datasets/CaDIS/"
 
@@ -35,32 +36,6 @@ TRANSFORMS = {
     "testing": Identity(),
 }
 
-setup_2_class_map = {
-    7: [8, 10, 20, 27, 32],
-    8: [9, 22],
-    9: [11, 33],
-    10: [12, 28],
-    11: [13, 21],
-    12: [14, 24],
-    13: [15, 18],
-    14: [16, 23],
-    15: [17],
-    16: [19],
-    17: [25, 26, 29, 30, 31, 34, 35],
-}
-
-
-def mask_to_setup(mask: Tensor, setup: int) -> Tensor:
-    if setup == 1:
-        mask[mask > 7] = 7
-    if setup == 2:
-        for k, values in setup_2_class_map.items():
-            for v in values:
-                mask[mask == v] = k
-    if setup == 3:
-        mask[mask > 25] = 25
-    return mask
-
 
 class CaDIS(Dataset):
     def __init__(
@@ -70,6 +45,7 @@ class CaDIS(Dataset):
         transforms: Iterable = {},
         image_size=(270, 480),
         noise_rate=0.0,
+        noise_type=None,
     ):
         super().__init__()
         assert split >= 0 and split <= 2
@@ -77,6 +53,7 @@ class CaDIS(Dataset):
         assert set(TRANSFORMS.keys()).issuperset(transforms)
         self.setup = setup
         self.noise_rate = noise_rate
+        self.noise_type = noise_type
         self.num_classes = {1: 8, 2: 18, 3: 26}
         split_ids = {0: "training", 1: "validation", 2: "testing"}
         # add resize transform if passed an empty set
@@ -182,9 +159,9 @@ class CaDIS(Dataset):
     def __getitem__(self, index) -> "tuple[Tensor, Tensor]":
         image = torch.load(self.image_paths[index])
         mask = torch.load(self.mask_paths[index])
+        mask = mask_to_setup_cadis(mask, self.setup)
         chance = torch.rand(1).item()
-        if chance > self.noise_rate:
-            mask = mask_to_setup(mask, self.setup)
-        else:
-            mask = torch.randint_like(mask, self.num_classes[self.setup])
-        return image, mask
+        if chance < self.noise_rate:
+            mask = make_noise(mask.unsqueeze(0), self.noise_type, "cadis", self.setup)  # type: ignore
+            # mask = torch.randint_like(mask, self.num_classes[self.setup])
+        return image, mask.squeeze()

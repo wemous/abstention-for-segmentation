@@ -12,18 +12,9 @@ from torchvision.transforms.v2.functional import (
     to_image,
 )
 from tqdm import tqdm
+from .utils import make_noise, mask_to_setup_ade
 
 DATA_PATH = "/data/wesam/datasets/ADE20K/"
-
-
-def mask_to_setup(mask: Tensor, setup: int) -> Tensor:
-    if setup == 1:
-        mask = mask
-    if setup == 2:
-        mask[mask > 76] = 0
-    if setup == 3:
-        mask[mask > 21] = 0
-    return mask
 
 
 class ADE20K(Dataset):
@@ -33,12 +24,14 @@ class ADE20K(Dataset):
         setup: int,
         image_size: "tuple[int, int]" = (480, 512),
         noise_rate=0.0,
+        noise_type=None,
     ):
         super().__init__()
         assert split >= 0 and split <= 2
         assert setup >= 1 and setup <= 3
         self.setup = setup
         self.noise_rate = noise_rate
+        self.noise_type = noise_type
         self.num_classes = {1: 151, 2: 77, 3: 22}
         split_ids = {0: "training", 1: "validation", 2: "testing"}
         trasnformed_path = join(DATA_PATH, f"transformed_{image_size[0]}_{image_size[1]}")
@@ -86,9 +79,9 @@ class ADE20K(Dataset):
     def __getitem__(self, index) -> "tuple[Tensor, Tensor]":
         image = torch.load(self.image_paths[index])
         mask = torch.load(self.mask_paths[index])
+        mask = mask_to_setup_ade(mask, self.setup)
         chance = torch.rand(1).item()
-        if chance > self.noise_rate:
-            mask = mask_to_setup(mask, self.setup)
-        else:
-            mask = torch.randint_like(mask, self.num_classes[self.setup])
-        return image, mask
+        if chance < self.noise_rate:
+            mask = make_noise(mask.unsqueeze(0), self.noise_type, "ade", self.setup)
+            # mask = torch.randint_like(mask, self.num_classes[self.setup])
+        return image, mask.squeeze()

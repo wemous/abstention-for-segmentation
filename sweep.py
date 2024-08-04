@@ -19,6 +19,7 @@ def main():
     config = wandb.config
 
     noise_rate = config.noise_rate
+    noise_type = config.noise_type
     dataset = config.dataset
     setup = dataset["setup"]
     image_size = dataset["image_size"]
@@ -31,6 +32,7 @@ def main():
             setup=setup,
             image_size=image_size,
             noise_rate=noise_rate,
+            noise_type=noise_type,
         )
         valid_dataset = ADE20K(split=1, setup=setup, image_size=image_size)
         test_dataset = ADE20K(split=2, setup=setup, image_size=image_size)
@@ -40,6 +42,7 @@ def main():
             setup=setup,
             image_size=image_size,
             noise_rate=noise_rate,
+            noise_type=noise_type,
         )
         valid_dataset = CaDIS(split=1, setup=setup, image_size=image_size)
         test_dataset = CaDIS(split=2, setup=setup, image_size=image_size)
@@ -72,7 +75,7 @@ def main():
         loss_args = {"max_epochs": max_epochs}
         num_classes += 1
     elif config.loss == "IDACLoss":
-        loss_args = {"noise_rate": noise_rate, "warmup_epochs": max_epochs // 10}
+        loss_args = {"noise_rate": noise_rate, "warmup_epochs": max_epochs // 5}
         num_classes += 1
     else:
         loss_args = {}
@@ -98,6 +101,7 @@ def main():
         enable_progress_bar=True,
         log_every_n_steps=len(train_loader) // 4 if dataset["name"] == "cadis" else None,
         logger=logger,
+        gradient_clip_val=0.5,
     )
 
     trainer.fit(model, train_loader, valid_loader)
