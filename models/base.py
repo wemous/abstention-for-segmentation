@@ -36,13 +36,15 @@ class BaseModel(LightningModule, ABC):
         targets = one_hot(targets.long(), self.num_classes).movedim(-1, 1)
         preds = self.forward(images)
         if "DAC" in self.loss_function._get_name():
-            loss, abstention_rate = self.loss_function(
+            loss, ce_loss, regularization, abstention_rate = self.loss_function(
                 preds,
                 targets.float(),
                 training=True,
                 epoch=self.current_epoch,
             )
-            self.log("abstention rate", abstention_rate, sync_dist=True)
+            self.log("CE term", ce_loss, sync_dist=True)
+            self.log("Regularization", regularization, sync_dist=True)
+            self.log("Abstention rate", abstention_rate, sync_dist=True)
         else:
             loss = self.loss_function(preds, targets.float())
         self.log(

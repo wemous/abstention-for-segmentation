@@ -1,6 +1,7 @@
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+import numpy as np
 from torch import Tensor
 from torchvision.ops.focal_loss import sigmoid_focal_loss
 
@@ -21,8 +22,8 @@ class DACLoss(nn.Module):
         self,
         max_epochs: int,
         warmup_epochs: int = 0,
-        alpha_final=2.0,
-        alpha_init_factor=64,
+        alpha_final=3.0,
+        alpha_init_factor=32,
         mu=0.05,
         **kwargs,
     ):
@@ -30,7 +31,7 @@ class DACLoss(nn.Module):
 
         # fixed values
         self.max_epochs = max_epochs
-        self.warmup_epochs = warmup_epochs if warmup_epochs > 0 else max_epochs // 10
+        self.warmup_epochs = warmup_epochs if warmup_epochs > 0 else max_epochs // 5
         self.alpha_final = alpha_final
         self.alpha_init_factor = alpha_init_factor
         self.mu = mu
@@ -49,9 +50,7 @@ class DACLoss(nn.Module):
         training: bool = False,
         epoch: int = 0,
     ):
-        ce_loss = F.cross_entropy(preds[:, :-1, :, :], targets, reduction="none").mean(
-            dim=(-2, -1)
-        )
+        ce_loss = F.cross_entropy(preds[:, :-1, :, :], targets, reduction="none")
 
         if not training:
             return ce_loss.mean()
@@ -59,9 +58,7 @@ class DACLoss(nn.Module):
             abstention_rate = (
                 (preds.argmax(dim=1) == preds.shape[1] - 1).float().mean().item()
             )
-            abstention = torch.exp(F.log_softmax(preds, dim=1))[:, -1, :, :].mean(
-                dim=(-2, -1)
-            )
+            abstention = torch.exp(F.log_softmax(preds, dim=1))[:, -1, :, :]
             abstention = torch.min(
                 abstention,
                 torch.tensor(
@@ -69,6 +66,7 @@ class DACLoss(nn.Module):
                     device=abstention.device,
                 ),
             )
+            regularization = torch.tensor(0.0)
 
             if epoch < self.warmup_epochs:
                 alpha_threshold = ((1 - abstention) * ce_loss).mean().item()
@@ -93,11 +91,13 @@ class DACLoss(nn.Module):
                     if epoch > self.alpha_update_epoch:
                         self.alpha += self.delta_alpha  # type: ignore
                         self.alpha_update_epoch = epoch
-                loss = (1 - abstention) * ce_loss - self.alpha * torch.log(1 - abstention)
+                ce_loss = (1 - abstention) * ce_loss
+                regularization = -self.alpha * torch.log(1 - abstention)
+                loss = ce_loss + regularization
                 # loss = (1 - abstention) * (
                 #     ce_loss + torch.log(1 - abstention)
                 # ) - self.alpha * torch.log(1 - abstention)
-            return loss.mean(), abstention_rate
+            return loss.mean(), ce_loss.mean(), regularization.mean(), abstention_rate
 
 
 class IDACLoss(nn.Module):
@@ -107,13 +107,17 @@ class IDACLoss(nn.Module):
         self,
         noise_rate: float = 0,
         warmup_epochs: int = 10,
-        alpha: float = 10,
+        alpha=None,
         **kwargs,
     ):
         super().__init__()
         self.noise_rate = noise_rate
         self.warmup_epochs = warmup_epochs
-        self.alpha = alpha
+        if alpha is None:
+            # self.alpha = max(1, noise_rate * 50)
+            self.alpha = max(1, round(25 / np.log(noise_rate) ** 2), 2)
+        else:
+            self.alpha = alpha
         self.epsilon = 1e-7
 
     def forward(
@@ -123,9 +127,7 @@ class IDACLoss(nn.Module):
         training: bool = False,
         epoch: int = 0,
     ):
-        ce_loss = F.cross_entropy(preds[:, :-1, :, :], targets, reduction="none").mean(
-            dim=(-2, -1)
-        )
+        ce_loss = F.cross_entropy(preds[:, :-1, :, :], targets, reduction="none")
 
         if not training:
             return ce_loss.mean()
@@ -133,9 +135,7 @@ class IDACLoss(nn.Module):
             abstention_rate = (
                 (preds.argmax(dim=1) == preds.shape[1] - 1).float().mean().item()
             )
-            abstention = torch.exp(F.log_softmax(preds, dim=1))[:, -1, :, :].mean(
-                dim=(-2, -1)
-            )
+            abstention = torch.exp(F.log_softmax(preds, dim=1))[:, -1, :, :]
             abstention = torch.min(
                 abstention,
                 torch.tensor(
@@ -143,14 +143,15 @@ class IDACLoss(nn.Module):
                     device=abstention.device,
                 ),
             )
+            regularization = torch.tensor(0.0)
 
             if epoch < self.warmup_epochs:
                 loss = ce_loss
             else:
-                loss = (1 - abstention) * ce_loss + self.alpha * (
-                    self.noise_rate - abstention.mean()
-                ) ** 2
-            return loss.mean(), abstention_rate
+                ce_loss = (1 - abstention) * ce_loss
+                regularization = self.alpha * (self.noise_rate - abstention.mean()) ** 2
+                loss = ce_loss + regularization
+            return loss.mean(), ce_loss.mean(), regularization.mean(), abstention_rate
 
 
 class SCELoss(nn.Module):

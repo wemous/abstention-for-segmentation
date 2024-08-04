@@ -18,23 +18,28 @@ def main():
     run = wandb.init()
     config = wandb.config
 
-    if config.dataset == "ade20k":
-        setup = 1
-        batch_size = 16
-        max_epochs = 30
-        train_dataset = ADE20K(split=0, setup=setup)
-        valid_dataset = ADE20K(split=1, setup=setup)
-        test_dataset = ADE20K(split=2, setup=setup)
-    elif config.dataset == "cadis":
-        setup = 3
-        batch_size = 64
-        max_epochs = 50
+    dataset = config.dataset
+    setup = dataset["setup"]
+    image_size = dataset["image_size"]
+    batch_size = dataset["batch_size"]
+    max_epochs = dataset["max_epochs"]
+
+    if dataset["name"] == "ade20k":
+        train_dataset = ADE20K(
+            split=0,
+            setup=setup,
+            image_size=image_size,
+        )
+        valid_dataset = ADE20K(split=1, setup=setup, image_size=image_size)
+        test_dataset = ADE20K(split=2, setup=setup, image_size=image_size)
+    elif dataset["name"] == "cadis":
         train_dataset = CaDIS(
             split=0,
             setup=setup,
+            image_size=image_size,
         )
-        valid_dataset = CaDIS(split=1, setup=setup)
-        test_dataset = CaDIS(split=2, setup=setup)
+        valid_dataset = CaDIS(split=1, setup=setup, image_size=image_size)
+        test_dataset = CaDIS(split=2, setup=setup, image_size=image_size)
 
     train_loader = DataLoader(
         train_dataset,
@@ -96,8 +101,9 @@ def main():
         enable_checkpointing=False,
         enable_model_summary=False,
         enable_progress_bar=True,
-        log_every_n_steps=len(train_loader) // 5,
+        log_every_n_steps=len(train_loader) // 4 if dataset["name"] == "cadis" else None,
         logger=logger,
+        gradient_clip_val=0.5,
     )
 
     trainer.fit(model, train_loader, valid_loader)
