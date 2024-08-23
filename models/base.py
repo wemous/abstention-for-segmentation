@@ -3,9 +3,11 @@ from importlib import import_module
 
 from lightning import LightningModule
 from torch import Tensor, softmax
-from torch.nn.functional import one_hot
-from torchmetrics.segmentation import GeneralizedDiceScore, MeanIoU
 from torch.optim.lr_scheduler import MultiplicativeLR
+from torchmetrics.functional.classification import (
+    multiclass_f1_score,
+    multiclass_jaccard_index,
+)
 
 
 class BaseModel(LightningModule, ABC):
@@ -21,8 +23,6 @@ class BaseModel(LightningModule, ABC):
         )
         self.optimizer_args = optimizer["args"]
 
-        self.gds = GeneralizedDiceScore(num_classes).to(self.device)
-        self.miou = MeanIoU(num_classes).to(self.device)
         self.model_name = model_name
 
         self.save_hyperparameters()
@@ -33,12 +33,11 @@ class BaseModel(LightningModule, ABC):
     def training_step(self, batch, batch_idx) -> Tensor:
         images = batch[0].to(self.device)
         targets = batch[1].to(self.device)
-        targets = one_hot(targets.long(), self.num_classes).movedim(-1, 1)
         preds = self.forward(images)
         if "DAC" in self.loss_function._get_name():
             loss, ce_loss, regularization, abstention_rate = self.loss_function(
                 preds,
-                targets.float(),
+                targets,
                 training=True,
                 epoch=self.current_epoch,
             )
@@ -46,7 +45,7 @@ class BaseModel(LightningModule, ABC):
             self.log("Regularization", regularization, sync_dist=True)
             self.log("Abstention rate", abstention_rate, sync_dist=True)
         else:
-            loss = self.loss_function(preds, targets.float())
+            loss = self.loss_function(preds, targets)
         self.log(
             "train/loss",
             loss,
@@ -59,9 +58,8 @@ class BaseModel(LightningModule, ABC):
     def validation_step(self, batch, batch_idx) -> Tensor:
         images = batch[0].to(self.device)
         targets = batch[1].to(self.device)
-        targets = one_hot(targets.long(), self.num_classes).movedim(-1, 1)
         preds = self.forward(images)
-        loss = self.loss_function(preds, targets.float())
+        loss = self.loss_function(preds, targets)
         self.log(
             "valid/loss",
             loss,
@@ -72,26 +70,27 @@ class BaseModel(LightningModule, ABC):
         if "DAC" in self.loss_function._get_name():
             preds = preds[:, :-1, :, :]
         preds = softmax(preds, 1).argmax(1).detach()
-        preds = one_hot(preds, self.num_classes).movedim(-1, 1)
-        gds = self.gds(preds, targets)
-        self.log("valid/GDS", gds, on_epoch=True, sync_dist=True)
-        miou = self.miou(preds, targets)
-        self.log("valid/mIoU", miou, on_epoch=True, sync_dist=True)
+        dice = multiclass_f1_score(preds, targets, self.num_classes)
+        miou = multiclass_jaccard_index(preds, targets, self.num_classes)
+        accuracy = (preds == targets).float().mean().item()
+        self.log("valid/Accuracy", accuracy, on_epoch=True, prog_bar=True, sync_dist=True)
+        self.log("valid/Dice", dice, on_epoch=True, prog_bar=True, sync_dist=True)
+        self.log("valid/mIoU", miou, on_epoch=True, prog_bar=True, sync_dist=True)
         return loss
 
     def test_step(self, batch, batch_idx):
         images = batch[0].to(self.device)
         targets = batch[1].to(self.device)
-        targets = one_hot(targets.long(), self.num_classes).movedim(-1, 1)
         preds = self.forward(images)
         if "DAC" in self.loss_function._get_name():
             preds = preds[:, :-1, :, :]
         preds = softmax(preds, 1).argmax(1).detach()
-        preds = one_hot(preds, self.num_classes).movedim(-1, 1)
-        gds = self.gds(preds, targets)
-        self.log("test/GDS", gds, sync_dist=True)
-        miou = self.miou(preds, targets)
-        self.log("test/mIoU", miou, sync_dist=True)
+        dice = multiclass_f1_score(preds, targets, self.num_classes)
+        miou = multiclass_jaccard_index(preds, targets, self.num_classes)
+        accuracy = (preds == targets).float().mean().item()
+        self.log("test/Accuracy", accuracy, on_epoch=True, sync_dist=True)
+        self.log("test/Dice", dice, on_epoch=True, sync_dist=True)
+        self.log("test/mIoU", miou, on_epoch=True, sync_dist=True)
 
     def configure_optimizers(self):
         optimizer = self.optimizer_class(self.parameters(), **self.optimizer_args)

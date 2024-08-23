@@ -32,20 +32,23 @@ def mask_to_setup_cadis(mask: Tensor, setup: int) -> Tensor:
 
 def mask_to_setup_ade(mask: Tensor, setup: int) -> Tensor:
     if setup == 1:
-        mask = mask
+        mask[mask > 21] = 0
     if setup == 2:
         mask[mask > 76] = 0
     if setup == 3:
-        mask[mask > 21] = 0
+        mask = mask
     return mask
 
 
-def swap(mask: Tensor) -> Tensor:
-    x, y = random.sample(mask.unique().tolist(), k=2)
+def swap(mask: Tensor, x=0, y=1) -> Tensor:
+    if len(mask.unique()) == 1:
+        return mask
+    # x, y = random.sample(mask.unique().tolist(), k=2)
     z = -1
     mask[mask == x] = z
     mask[mask == y] = x
     mask[mask == z] = y
+
     return mask
 
 
@@ -70,4 +73,7 @@ def make_noise(mask: Tensor, noise_type: str, dataset: str, setup: int = 1) -> T
         mask = swap(mask)
         mask = ElasticTransform()(mask)
         mask = blur(mask, setup, dataset)
+    elif noise_type == "random":
+        NOISE_TYPES = ["blur", "elastic", "swap", "all"]
+        mask = make_noise(mask, random.choice(NOISE_TYPES), dataset, setup)
     return mask

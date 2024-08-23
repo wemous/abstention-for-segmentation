@@ -23,8 +23,8 @@ class DACLoss(nn.Module):
         max_epochs: int,
         warmup_epochs: int = 0,
         alpha_final=3.0,
-        alpha_init_factor=32,
-        mu=0.05,
+        alpha_init_factor=64,
+        mu=0.2,
         **kwargs,
     ):
         super().__init__()
@@ -157,34 +157,23 @@ class IDACLoss(nn.Module):
 class SCELoss(nn.Module):
     """Apply Symmetric Cross Entropy Loss"""
 
-    def __init__(
-        self,
-        alpha: float = 0.1,
-        beta: float = 1,
-        A: float = -6,
-        num_classes: int = 151,
-        **kwargs,
-    ):
+    def __init__(self, alpha=1.0, beta=0.5):
         super().__init__()
-        assert alpha > 0 and beta >= 0 and A < 0
         self.alpha = alpha
         self.beta = beta
-        self.A = A
-        self.num_classes = num_classes
         self.cross_entropy = nn.CrossEntropyLoss()
 
-    def forward(self, preds: Tensor, targets: Tensor):
+    def forward(self, pred: Tensor, targets: Tensor):
         # CCE
-        ce = self.cross_entropy(preds, targets)
+        ce = self.cross_entropy(pred, targets)
 
         # RCE
-        pred = F.softmax(preds, dim=1)
-        if targets.ndim < 4:
-            targets = F.one_hot(targets.long(), self.num_classes).movedim(-1, 1)
-        log_targets = torch.clamp(torch.log(targets), min=self.A)
-        rce = (-1 * torch.sum(pred * log_targets, dim=1)).mean()
+        pred = F.softmax(pred, dim=1)
+        pred = torch.clamp(pred, min=1e-7, max=1.0)
+        targets = torch.clamp(targets, min=1e-4, max=1.0)
+        rce = -1 * torch.sum(pred * torch.log(targets), dim=1)
 
-        loss = self.alpha * ce + self.beta * rce
+        loss = self.alpha * ce + self.beta * rce.mean()
         return loss
 
 

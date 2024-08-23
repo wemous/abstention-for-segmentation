@@ -25,6 +25,7 @@ class ADE20K(Dataset):
         image_size: "tuple[int, int]" = (480, 512),
         noise_rate=0.0,
         noise_type=None,
+        dataset_size_factor: float = 1,
     ):
         super().__init__()
         assert split >= 0 and split <= 2
@@ -32,7 +33,7 @@ class ADE20K(Dataset):
         self.setup = setup
         self.noise_rate = noise_rate
         self.noise_type = noise_type
-        self.num_classes = {1: 151, 2: 77, 3: 22}
+        self.num_classes = {1: 22, 2: 77, 3: 151}
         split_ids = {0: "training", 1: "validation", 2: "testing"}
         trasnformed_path = join(DATA_PATH, f"transformed_{image_size[0]}_{image_size[1]}")
 
@@ -73,6 +74,11 @@ class ADE20K(Dataset):
             for _ in sorted(listdir(transformed_mask_folder))
         ]
 
+        dataset_size_factor = 1 if split == 2 else min(1, dataset_size_factor)
+        dataset_size = int(len(self.image_paths) * dataset_size_factor)
+        self.image_paths = self.image_paths[:dataset_size]
+        self.mask_paths = self.mask_paths[:dataset_size]
+
     def __len__(self):
         return len(self.image_paths)
 
@@ -82,6 +88,6 @@ class ADE20K(Dataset):
         mask = mask_to_setup_ade(mask, self.setup)
         chance = torch.rand(1).item()
         if chance < self.noise_rate:
-            mask = make_noise(mask.unsqueeze(0), self.noise_type, "ade", self.setup)
+            mask = make_noise(mask.unsqueeze(0), self.noise_type, "ade", self.setup)  # type: ignore
             # mask = torch.randint_like(mask, self.num_classes[self.setup])
         return image, mask.squeeze()
