@@ -1,3 +1,3 @@
-from .unet import UNet
 from .deeplabv3 import DeepLabV3
-from .upernet import UPerNet
+from .plain_unet import PlainUNet
+from .smp import FPN, DeepLabV3Plus, UNet

@@ -77,7 +77,7 @@ class OutConv(nn.Module):
         return self.conv(x)
 
 
-class UNet(BaseModel):
+class PlainUNet(BaseModel):
     def __init__(
         self,
         num_classes: int,
