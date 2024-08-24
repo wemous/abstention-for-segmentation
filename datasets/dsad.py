@@ -74,10 +74,8 @@ def build_image_and_mask(parent_path, index) -> tuple[Tensor, Tensor]:
 
 
 def transform(image: Tensor, mask: Tensor, tf: str) -> tuple[Tensor, Tensor]:
-    if tf == "jitter":
-        image = tf_jitter(image)
-    elif tf == "noise":
-        image = gaussian_noise(image)
+    if tf == "normalized":
+        image = normalize(image, mean, std)
     elif tf == "rotated":
         angle = random.uniform(-60, 60)
         image = rotate(image, angle)
@@ -85,6 +83,10 @@ def transform(image: Tensor, mask: Tensor, tf: str) -> tuple[Tensor, Tensor]:
     elif tf == "flipped":
         image = vertical_flip(image)
         mask = vertical_flip(mask)
+    elif tf == "jitter":
+        image = tf_jitter(image)
+    elif tf == "noise":
+        image = gaussian_noise(image)
 
     image = normalize(image, mean, std)
     return image, mask
@@ -92,9 +94,9 @@ def transform(image: Tensor, mask: Tensor, tf: str) -> tuple[Tensor, Tensor]:
 
 def build_dataset(split: str, tf: str = ""):
     image_paths, mask_paths = [], []
-    split_path = ROOT.joinpath(f"transformed/{tf if split == "train" else split}")
+    split_path = ROOT.joinpath(f"transformed/{tf if tf else split}")
     if not split_path.exists():
-        print(f"Building {tf if split == "train" else split} images and masks")
+        print(f"Building {tf if tf else split} images and masks")
         length = 142 if split == "valid" else 288 if split == "test" else 1000
         p_bar = tqdm(total=length, desc="images")
         for v in video_splits[split]:
@@ -105,7 +107,7 @@ def build_dataset(split: str, tf: str = ""):
             for image_path in images:
                 index = image_path.name[5:7]
                 image, mask = build_image_and_mask(source, index)
-                if split == "train":
+                if tf:
                     image, mask = transform(image, mask, tf)
                 torch.save(image, destination.joinpath(f"image{index}.pt"))
                 torch.save(mask, destination.joinpath(f"mask{index}.pt"))
@@ -123,7 +125,7 @@ class DSAD(Dataset):
     def __init__(
         self,
         split: str,
-        normalized=True,
+        normalized=False,
         rotated=False,
         flipped=False,
         jitter=False,
@@ -139,14 +141,16 @@ class DSAD(Dataset):
             "noise": noise,
         }
         if split == "train":
-            for k,v in transforms.items():
+            images, masks = build_dataset(split="train")
+            self.image_paths.extend(images)
+            self.mask_paths.extend(masks)
+            for k, v in transforms.items():
                 if v:
-                    images, masks = build_dataset("train", k)
+                    images, masks = build_dataset(split="train", tf=k)
                     self.image_paths.extend(images)
                     self.mask_paths.extend(masks)
         else:
             self.image_paths, self.mask_path = build_dataset(split)
-
 
     def __len__(self):
         return len(self.image_paths)

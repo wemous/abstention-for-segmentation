@@ -1,6 +1,7 @@
 from collections.abc import Iterable
 from os import listdir, makedirs
 from os.path import exists, join
+import random
 
 import torch
 from PIL import Image
@@ -17,13 +18,14 @@ from torchvision.transforms.v2.functional import (
     pil_to_tensor,
     resize,
     to_dtype,
-    to_image,
-    vertical_flip_image,
+    vertical_flip,
+    normalize,
+    rotate,
 )
 from tqdm import tqdm
 from .utils import make_noise, mask_to_setup_cadis
 
-DATA_PATH = "/data/wesam/datasets/CaDIS/"
+ROOT = "/data/wesam/datasets/CaDIS/"
 
 TRANSFORMS = {
     "original": Identity(),
@@ -31,10 +33,13 @@ TRANSFORMS = {
     "elastic": ElasticTransform(alpha=20, sigma=1),
     "jitter": ColorJitter(brightness=0.3, contrast=0.3, saturation=0.3, hue=0.5),
     "equalize": equalize_image,
-    "flip": vertical_flip_image,
+    "flip": vertical_flip,
     "validation": Identity(),
     "testing": Identity(),
 }
+
+# tf_jitter = ColorJitter(brightness=0.5, contrast=0.5, saturation=0.3, hue=0.5)
+tf_jitter = ColorJitter(saturation=0.3, hue=0.5)
 
 
 class CaDIS(Dataset):
@@ -43,9 +48,13 @@ class CaDIS(Dataset):
         split: int,
         setup: int,
         transforms: Iterable = {},
-        image_size=(270, 480),
+        image_size=(256, 480),
         noise_rate=0.0,
         noise_type=None,
+        normalize=False,
+        jitter=False,
+        rotate=False,
+        flip=False,
     ):
         super().__init__()
         assert split >= 0 and split <= 2
@@ -98,7 +107,7 @@ class CaDIS(Dataset):
             ],
         }
         videos = video_split[split_ids[split]]
-        trasnformed_path = join(DATA_PATH, f"transformed_{image_size[0]}_{image_size[1]}")
+        trasnformed_path = join(ROOT, f"transformed_{image_size[0]}_{image_size[1]}")
 
         for tf in transforms:
             tf_folder = join(trasnformed_path, tf)
@@ -107,14 +116,14 @@ class CaDIS(Dataset):
                 makedirs(tf_folder)
 
                 for v in tqdm(videos, desc=f"{tf} transform"):
-                    image_source = join(DATA_PATH, v, "Images")
+                    image_source = join(ROOT, v, "Images")
                     image_target = join(tf_folder, v, "Images")
                     makedirs(image_target)
                     image_names = sorted(listdir(image_source))
 
                     for n in image_names:
                         image = to_dtype(
-                            to_image(Image.open(join(image_source, n))),
+                            pil_to_tensor(Image.open(join(image_source, n))),
                             torch.float,
                             scale=True,
                         )
@@ -122,7 +131,7 @@ class CaDIS(Dataset):
                         image = TRANSFORMS[tf](image)
                         torch.save(image, join(image_target, n[:-4] + ".pt"))
 
-                    mask_source = join(DATA_PATH, v, "Labels")
+                    mask_source = join(ROOT, v, "Labels")
                     mask_target = join(tf_folder, v, "Labels")
                     makedirs(mask_target)
                     mask_names = sorted(listdir(mask_source))
@@ -153,15 +162,39 @@ class CaDIS(Dataset):
                 )
         assert len(self.image_paths) == len(self.mask_paths)
 
+        self.do_normalize = normalize
+        self.do_jitter = jitter
+        self.do_rotate = rotate
+        self.do_flip = flip
+        self.split = split
+
     def __len__(self):
         return len(self.image_paths)
 
     def __getitem__(self, index) -> "tuple[Tensor, Tensor]":
-        image = torch.load(self.image_paths[index])
-        mask = torch.load(self.mask_paths[index])
+        image = torch.load(self.image_paths[index], weights_only=True)
+        mask = torch.load(self.mask_paths[index], weights_only=True)
         mask = mask_to_setup_cadis(mask, self.setup)
-        chance = torch.rand(1).item()
-        if chance < self.noise_rate:
+        # chance = torch.rand(1).item()
+        # if chance < self.noise_rate:
+        if index < self.noise_rate * len(self):
             mask = make_noise(mask.unsqueeze(0), self.noise_type, "cadis", self.setup)  # type: ignore
             # mask = torch.randint_like(mask, self.num_classes[self.setup])
+
+        mean = [0.5737, 0.3461, 0.1954]
+        std = [0.1593, 0.1558, 0.1049]
+        if self.split == 0:
+            if self.do_normalize:
+                image = normalize(image, mean, std)
+            elif self.do_jitter:
+                image = tf_jitter(image)
+            elif self.do_rotate:
+                angle = random.choice(range(-10, 11))
+                image = rotate(image, angle, fill=0)  # type: ignore
+                mask = rotate(
+                    mask.unsqueeze(0), angle, fill=self.num_classes[self.setup] - 1  # type: ignore
+                )
+            elif self.do_flip:
+                image = vertical_flip(image)
+                mask = vertical_flip(mask)
         return image, mask.squeeze()
