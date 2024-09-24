@@ -5,7 +5,6 @@ from pathlib import Path
 import torch
 from PIL import Image
 from torch import Tensor
-from tqdm import tqdm
 from torch.utils.data import Dataset
 from torchvision.transforms.v2 import ColorJitter
 from torchvision.transforms.v2.functional import (
@@ -17,9 +16,10 @@ from torchvision.transforms.v2.functional import (
     to_dtype,
     vertical_flip,
 )
+from tqdm import tqdm
 
-ROOT = Path("/data/wesam/datasets/DSAD/")
-multilabel = ROOT.joinpath("multilabel")
+root_path = Path("/data/wesam/datasets/DSAD/")
+multilabel = root_path.joinpath("multilabel")
 
 video_splits = {
     "train": [
@@ -46,7 +46,7 @@ video_splits = {
 mean = [0.4944, 0.2892, 0.2332]
 std = [0.2423, 0.1864, 0.1665]
 
-tf_jitter = ColorJitter(brightness=0.3, contrast=0.3, saturation=0.3, hue=0.3)
+tf_jitter = ColorJitter(brightness=0.3, contrast=0.3, saturation=0.3, hue=0.3).cuda()
 
 
 def to_tensor(path) -> Tensor:
@@ -85,16 +85,15 @@ def transform(image: Tensor, mask: Tensor, tf: str) -> tuple[Tensor, Tensor]:
         mask = vertical_flip(mask)
     elif tf == "jitter":
         image = tf_jitter(image)
-    elif tf == "noise":
+    elif tf == "gaussian":
         image = gaussian_noise(image)
 
-    image = normalize(image, mean, std)
     return image, mask
 
 
 def build_dataset(split: str, tf: str = ""):
     image_paths, mask_paths = [], []
-    split_path = ROOT.joinpath(f"transformed/{tf if tf else split}")
+    split_path = root_path.joinpath(f"transformed/{tf if tf else split}")
     if not split_path.exists():
         print(f"Building {tf if tf else split} images and masks")
         length = 142 if split == "valid" else 288 if split == "test" else 1000
@@ -108,9 +107,9 @@ def build_dataset(split: str, tf: str = ""):
                 index = image_path.name[5:7]
                 image, mask = build_image_and_mask(source, index)
                 if tf:
-                    image, mask = transform(image, mask, tf)
-                torch.save(image, destination.joinpath(f"image{index}.pt"))
-                torch.save(mask, destination.joinpath(f"mask{index}.pt"))
+                    image, mask = transform(image.cuda(), mask.cuda(), tf)
+                torch.save(image.cpu(), destination.joinpath(f"image{index}.pt"))
+                torch.save(mask.cpu(), destination.joinpath(f"mask{index}.pt"))
                 p_bar.update()
         p_bar.close()
 
@@ -129,7 +128,7 @@ class DSAD(Dataset):
         rotated=False,
         flipped=False,
         jitter=False,
-        noise=False,
+        gaussian=False,
     ):
         super().__init__()
         self.image_paths, self.mask_paths = [], []
@@ -138,8 +137,9 @@ class DSAD(Dataset):
             "rotated": rotated,
             "flipped": flipped,
             "jitter": jitter,
-            "noise": noise,
+            "gaussian": gaussian,
         }
+
         if split == "train":
             images, masks = build_dataset(split="train")
             self.image_paths.extend(images)
@@ -150,7 +150,8 @@ class DSAD(Dataset):
                     self.image_paths.extend(images)
                     self.mask_paths.extend(masks)
         else:
-            self.image_paths, self.mask_path = build_dataset(split)
+            self.image_paths, self.mask_paths = build_dataset(split)
+        assert len(self.image_paths) == len(self.mask_paths)
 
     def __len__(self):
         return len(self.image_paths)

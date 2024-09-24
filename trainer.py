@@ -1,42 +1,29 @@
-from importlib import import_module
-
 import lightning as pl
 import torch
 from lightning.pytorch.loggers import WandbLogger
 from torch.utils.data import DataLoader
-from yaml import full_load
+from models import UNet, DeepLabV3Plus, FPN, PlainUNet, DeepLabV3
 
 import wandb
-from datasets import ADE20K, CaDIS
+from datasets import CaDIS
 
-config = full_load(open("configs/train_config.yaml"))
-pl.seed_everything(config["seed"])
+pl.seed_everything(13)
 torch.set_float32_matmul_precision("high")
 
-dataset_name = config["dataset"]
-image_size = config["image_size"]
-transforms = config["transforms"]
-batch_size = config["batch_size"]
-setup = config["setup"]
+batch_size = 64
 
-if dataset_name == "ade20k":
-    train_dataset = ADE20K(split=0, setup=setup, image_size=image_size)
-    valid_dataset = ADE20K(split=1, setup=setup, image_size=image_size)
-    test_dataset = ADE20K(split=2, setup=setup, image_size=image_size)
-elif dataset_name == "cadis":
-    train_dataset = CaDIS(
-        split=0,
-        setup=setup,
-        image_size=image_size,
-        transforms=transforms,
-    )
-    valid_dataset = CaDIS(split=1, setup=setup, image_size=image_size)
-    test_dataset = CaDIS(split=2, setup=setup, image_size=image_size)
+train_dataset = CaDIS(split="valid", setup=1)
+augmented_dataset = CaDIS(
+    split="train", setup=1, normalized=True, jitter=True, gaussian=True, flipped=True
+)
+valid_dataset = CaDIS(split="valid", setup=1)
+test_dataset = CaDIS(split="test", setup=1)
 
-num_classes = train_dataset.num_classes[setup]
+num_classes = train_dataset.num_classes[1]
+
 
 train_loader = DataLoader(
-    train_dataset,
+    augmented_dataset,
     batch_size=batch_size,
     shuffle=True,
     drop_last=False,
@@ -57,34 +44,38 @@ test_loader = DataLoader(
     num_workers=8,
 )
 
-model_config = config["model"]
-module = model_config["module"]
-model_name = model_config["name"]
-model_args = model_config["args"]
-loss_config = model_args["loss"]
-optimizer_name = model_args["optimizer"]["name"]
 
-if loss_config["name"] == "DACLoss":
-    loss_config["args"]["max_epochs"] = config["max_epochs"]
-    num_classes += 1
-loss_config["args"]["num_classes"] = num_classes
+loss = {"module": "losses", "name": "CELoss", "args": {}}
+# optimizer = {"module": "torch.optim", "name": "AdamW", "args": {"lr": 1e-4}}
+optimizer = {
+    "module": "torch.optim",
+    "name": "SGD",
+    "args": {
+        "lr": 0.01,
+        "momentum": 0.9,
+        "weight_decay": 5e-4,
+        "nesterov": "True",
+    },
+}
 
-model_args["loss"] = loss_config
-model = getattr(import_module(module), model_name)(num_classes, **model_args)
 
-run_name = f"{model_name.lower()}/{dataset_name}/{loss_config['name'][:-4].lower()}/{optimizer_name.lower()}"
+# model = PlainUNet(num_classes, loss, optimizer, bilinear=True)
+# model = DeepLabV3(num_classes, loss, optimizer)
+# model = DeepLabV3Plus(num_classes, loss, optimizer)
+# model = FPN(num_classes, loss, optimizer)
+model = UNet(num_classes, loss, optimizer)
 
-wandb.login()
-
-logger = WandbLogger(name=run_name, project="DAC Segmentation")
+# wandb.login()
+# logger = WandbLogger(project="DAC Segmentation")
 trainer = pl.Trainer(
-    devices=config["devices"],
-    max_epochs=config["max_epochs"],
+    max_epochs=20,
     enable_checkpointing=False,
     enable_model_summary=False,
     enable_progress_bar=True,
     log_every_n_steps=len(train_loader) // 5,
-    logger=logger,
+    logger=None,
+    strategy="ddp_find_unused_parameters_true",
+    # gradient_clip_val=0.5,
 )
 
 trainer.fit(model, train_loader, valid_loader)

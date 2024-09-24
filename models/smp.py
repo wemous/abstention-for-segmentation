@@ -14,7 +14,7 @@ class FPN(BaseModel):
             optimizer=optimizer,
             model_name="FPN",
         )
-        self.net = fpn(classes=num_classes, **kwargs)
+        self.net = fpn(encoder_name="resnet50", classes=num_classes, **kwargs)
 
     def forward(self, x: Tensor) -> Tensor:
         return self.net(x)  # type: ignore
@@ -28,7 +28,7 @@ class DeepLabV3Plus(BaseModel):
             optimizer=optimizer,
             model_name="DeepLabV3+",
         )
-        self.net = deeplab(classes=num_classes, **kwargs)
+        self.net = deeplab(encoder_name="resnet50", classes=num_classes, **kwargs)
 
     def forward(self, x: Tensor) -> Tensor:
         return self.net(x)  # type: ignore
@@ -42,7 +42,7 @@ class UNet(BaseModel):
             optimizer=optimizer,
             model_name="UNet",
         )
-        self.net = unet(classes=num_classes, **kwargs)
+        self.net = unet(encoder_name="resnet50", classes=num_classes, **kwargs)
 
     def forward(self, x: Tensor) -> Tensor:
         return self.net(x)  # type: ignore
