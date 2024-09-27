@@ -1,5 +1,6 @@
 from os import makedirs
 from pathlib import Path
+import random
 
 import torch
 from PIL import Image
@@ -11,6 +12,7 @@ from torchvision.transforms.v2.functional import (
     normalize,
     pil_to_tensor,
     resize,
+    rotate,
     to_dtype,
     vertical_flip,
 )
@@ -49,69 +51,6 @@ std = [0.1593, 0.1558, 0.1049]
 
 tf_jitter = ColorJitter(brightness=0.3, contrast=0.3, saturation=0.3, hue=0.3).cuda()
 
-
-def to_tensor(path, scale=False) -> Tensor:
-    return to_dtype(
-        pil_to_tensor(Image.open(path)),
-        dtype=torch.float,
-        scale=scale,
-    )
-
-
-def transform(x: Tensor, tf: str) -> Tensor:
-    if tf == "normalized":
-        x = normalize(x, mean, std)
-    elif tf == "flipped":
-        x = vertical_flip(x)
-    elif tf == "jitter":
-        x = tf_jitter(x)
-    elif tf == "noise":
-        x = gaussian_noise(x)
-
-    return x
-
-
-def build_dataset(split: str, image_size: tuple, tf: str = ""):
-    image_paths, label_paths = [], []
-    split_path = root_path.joinpath(
-        f"transformed_{image_size[0]}_{image_size[1]}/{tf if tf else split}"
-    )
-    if not split_path.exists():
-        print(f"Building {tf if tf else split} images and masks")
-        # length = 534 if split == "valid" else 586 if split == "test" else 3550
-        for v in tqdm(video_splits[split], desc="videos"):
-            source = root_path.joinpath(v)
-            destination = split_path.joinpath(v)
-
-            makedirs(destination.joinpath("Images"))
-            images = [f for f in source.joinpath("Images").iterdir()]
-            for image_path in images:
-                image = to_tensor(image_path, scale=True)
-                image = resize(image, list(image_size))
-                if tf:
-                    image = transform(image.cuda(), tf)
-                torch.save(
-                    image.cpu(), destination.joinpath(f"Images/{image_path.stem}.pt")
-                )
-
-            makedirs(destination.joinpath("Labels"))
-            labels = [f for f in source.joinpath("Labels").iterdir()]
-            for label_path in labels:
-                label = to_tensor(label_path, scale=False)
-                label = resize(label, list(image_size))
-                if tf == "flipped":
-                    image = transform(image.cuda(), "flipped")
-                torch.save(
-                    label.cpu(), destination.joinpath(f"Labels/{label_path.stem}.pt")
-                )
-
-    for v in video_splits[split]:
-        video_path = split_path.joinpath(v)
-        image_paths.extend([f for f in sorted(video_path.joinpath("Images").iterdir())])
-        label_paths.extend([f for f in sorted(video_path.joinpath("Labels").iterdir())])
-    return image_paths, label_paths
-
-
 setup_2_class_map = {
     7: [8, 10, 20, 27, 32],
     8: [9, 22],
@@ -139,49 +78,106 @@ def mask_to_setup(mask: Tensor, setup: int) -> Tensor:
     return mask
 
 
+def to_tensor(path, scale=False) -> Tensor:
+    return to_dtype(
+        pil_to_tensor(Image.open(path)),
+        dtype=torch.float,
+        scale=scale,
+    )
+
+
+def transform(image: Tensor, mask: Tensor, tf: str) -> tuple[Tensor, Tensor]:
+    if tf == "flipped":
+        image = vertical_flip(image)
+        mask = vertical_flip(mask)
+    elif tf == "gaussian":
+        image = gaussian_noise(image)
+    elif tf == "jitter":
+        image = tf_jitter(image)
+    elif tf == "normalized":
+        image = normalize(image, mean, std)
+    elif tf == "rotated":
+        angle = random.uniform(-60, 60)
+        image = rotate(image, angle, fill=35)  # type: ignore
+        mask = rotate(mask, angle, fill=35)  # type: ignore
+    return image, mask
+
+
+def build_dataset(split: str, tf: str = ""):
+    image_paths, mask_paths = [], []
+    split_path = root_path.joinpath(f"transformed/{tf if tf else split}")
+    if not split_path.exists():
+        print(f"Building {tf if tf else split} images and masks")
+        length = 534 if split == "valid" else 586 if split == "test" else 3550
+        p_bar = tqdm(total=length, desc="images")
+        for v in video_splits[split]:
+            source = root_path.joinpath(v)
+            destination = split_path.joinpath(v)
+            makedirs(destination.joinpath("Images"))
+            makedirs(destination.joinpath("Labels"))
+            images = sorted([*source.joinpath("Images").iterdir()])
+            masks = sorted([*source.joinpath("Labels").iterdir()])
+            for i_path, m_path in zip(images, masks):
+                image = to_tensor(i_path, scale=True)
+                image = resize(image, [256, 480])
+                mask = to_tensor(m_path, scale=False)
+                mask = resize(mask, [256, 480])
+                if tf:
+                    image, mask = transform(image.cuda(), mask.cuda(), tf)
+                torch.save(image.cpu(), destination.joinpath(f"Images/{i_path.stem}.pt"))
+                torch.save(mask.cpu(), destination.joinpath(f"Labels/{m_path.stem}.pt"))
+                p_bar.update()
+        p_bar.close()
+
+    for v in video_splits[split]:
+        video_path = split_path.joinpath(v)
+        image_paths.extend(sorted([*video_path.joinpath("Images").iterdir()]))
+        mask_paths.extend(sorted([*video_path.joinpath("Labels").iterdir()]))
+    return image_paths, mask_paths
+
+
 class CaDIS(Dataset):
     def __init__(
         self,
-        split: str,
+        split: str = "train",
         setup: int = 1,
-        image_size=(256, 480),
-        normalized=False,
         flipped=False,
-        jitter=False,
         gaussian=False,
+        jitter=False,
+        normalized=False,
+        rotated=False,
     ):
         super().__init__()
         assert setup >= 1 and setup <= 3
         self.setup = setup
         self.num_classes = {1: 8, 2: 18, 3: 26}
-        self.image_paths, self.label_paths = [], []
+        self.image_paths, self.mask_paths = [], []
         transforms = {
-            "normalized": normalized,
             "flipped": flipped,
-            "jitter": jitter,
             "gaussian": gaussian,
+            "jitter": jitter,
+            "normalized": normalized,
+            "rotated": rotated,
         }
 
         if split == "train":
-            images, labels = build_dataset(split="train", image_size=image_size)
+            images, masks = build_dataset(split="train")
             self.image_paths.extend(images)
-            self.label_paths.extend(labels)
+            self.mask_paths.extend(masks)
             for k, v in transforms.items():
                 if v:
-                    images, labels = build_dataset(
-                        split="train", image_size=image_size, tf=k
-                    )
+                    images, masks = build_dataset(split="train", tf=k)
                     self.image_paths.extend(images)
-                    self.label_paths.extend(labels)
+                    self.mask_paths.extend(masks)
         else:
-            self.image_paths, self.label_paths = build_dataset(split, image_size)
-        assert len(self.image_paths) == len(self.label_paths)
+            self.image_paths, self.mask_paths = build_dataset(split)
+        assert len(self.image_paths) == len(self.mask_paths)
 
     def __len__(self):
         return len(self.image_paths)
 
     def __getitem__(self, index) -> "tuple[Tensor, Tensor]":
         image = torch.load(self.image_paths[index], weights_only=True)
-        mask = torch.load(self.label_paths[index], weights_only=True)
+        mask = torch.load(self.mask_paths[index], weights_only=True)
         mask = mask_to_setup(mask, self.setup)
         return image, mask

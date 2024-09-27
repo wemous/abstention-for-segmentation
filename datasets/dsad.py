@@ -57,14 +57,12 @@ def to_tensor(path) -> Tensor:
     )
 
 
-def build_image_and_mask(parent_path, index) -> tuple[Tensor, Tensor]:
-    image_path = Path(parent_path).joinpath(f"image{index}.png")
+def build_image_and_mask(video_path, index) -> tuple[Tensor, Tensor]:
+    image_path = Path(video_path).joinpath(f"image{index}.png")
     image = to_tensor(image_path)
     image = resize(image, [384, 480])
 
-    mask_paths = [
-        p for p in sorted(Path(parent_path).iterdir()) if f"mask{index}" in p.name
-    ]
+    mask_paths = sorted([*Path(video_path).glob(f"mask{index}*")])
     organ_masks = torch.stack([to_tensor(p) for p in mask_paths])
     organ_masks = resize(organ_masks, [384, 480])
     background = 1 - organ_masks.max(0)[0].unsqueeze(0)
@@ -74,20 +72,19 @@ def build_image_and_mask(parent_path, index) -> tuple[Tensor, Tensor]:
 
 
 def transform(image: Tensor, mask: Tensor, tf: str) -> tuple[Tensor, Tensor]:
-    if tf == "normalized":
+    if tf == "flipped":
+        image = vertical_flip(image)
+        mask = vertical_flip(mask)
+    elif tf == "gaussian":
+        image = gaussian_noise(image)
+    elif tf == "jitter":
+        image = tf_jitter(image)
+    elif tf == "normalized":
         image = normalize(image, mean, std)
     elif tf == "rotated":
         angle = random.uniform(-60, 60)
         image = rotate(image, angle)
         mask = rotate(mask, angle)
-    elif tf == "flipped":
-        image = vertical_flip(image)
-        mask = vertical_flip(mask)
-    elif tf == "jitter":
-        image = tf_jitter(image)
-    elif tf == "gaussian":
-        image = gaussian_noise(image)
-
     return image, mask
 
 
@@ -102,9 +99,8 @@ def build_dataset(split: str, tf: str = ""):
             source = multilabel.joinpath(v)
             destination = split_path.joinpath(v)
             makedirs(destination)
-            images = [f for f in sorted(source.iterdir()) if "image" in f.name]
-            for image_path in images:
-                index = image_path.name[5:7]
+            for image_path in [*source.glob("image*")]:
+                index = image_path.stem[-2:]
                 image, mask = build_image_and_mask(source, index)
                 if tf:
                     image, mask = transform(image.cuda(), mask.cuda(), tf)
@@ -115,29 +111,29 @@ def build_dataset(split: str, tf: str = ""):
 
     for v in video_splits[split]:
         video_path = split_path.joinpath(v)
-        image_paths.extend([f for f in sorted(video_path.iterdir()) if "image" in f.name])
-        mask_paths.extend([f for f in sorted(video_path.iterdir()) if "mask" in f.name])
+        image_paths.extend(sorted([*video_path.glob("image*")]))
+        mask_paths.extend(sorted([*video_path.glob("mask*")]))
     return image_paths, mask_paths
 
 
 class DSAD(Dataset):
     def __init__(
         self,
-        split: str,
+        split: str = "train",
+        flipped=False,
+        gaussian=False,
+        jitter=False,
         normalized=False,
         rotated=False,
-        flipped=False,
-        jitter=False,
-        gaussian=False,
     ):
         super().__init__()
         self.image_paths, self.mask_paths = [], []
         transforms = {
+            "flipped": flipped,
+            "gaussian": gaussian,
+            "jitter": jitter,
             "normalized": normalized,
             "rotated": rotated,
-            "flipped": flipped,
-            "jitter": jitter,
-            "gaussian": gaussian,
         }
 
         if split == "train":
