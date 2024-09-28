@@ -49,12 +49,8 @@ std = [0.2423, 0.1864, 0.1665]
 tf_jitter = ColorJitter(brightness=0.3, contrast=0.3, saturation=0.3, hue=0.3).cuda()
 
 
-def to_tensor(path) -> Tensor:
-    return to_dtype(
-        pil_to_tensor(Image.open(path)),
-        dtype=torch.float,
-        scale=True,
-    )
+def to_tensor(path, dtype=torch.float) -> Tensor:
+    return to_dtype(pil_to_tensor(Image.open(path)), dtype=dtype, scale=True)
 
 
 def build_image_and_mask(video_path, index) -> tuple[Tensor, Tensor]:
@@ -63,7 +59,7 @@ def build_image_and_mask(video_path, index) -> tuple[Tensor, Tensor]:
     image = resize(image, [384, 480])
 
     mask_paths = sorted([*Path(video_path).glob(f"mask{index}*")])
-    organ_masks = torch.stack([to_tensor(p) for p in mask_paths])
+    organ_masks = torch.stack([to_tensor(p, dtype=torch.long) for p in mask_paths])
     organ_masks = resize(organ_masks, [384, 480])
     background = 1 - organ_masks.max(0)[0].unsqueeze(0)
     mask = torch.concat([background, organ_masks]).argmax(0)
@@ -109,10 +105,8 @@ def build_dataset(split: str, tf: str = ""):
                 p_bar.update()
         p_bar.close()
 
-    for v in video_splits[split]:
-        video_path = split_path.joinpath(v)
-        image_paths.extend(sorted([*video_path.glob("image*")]))
-        mask_paths.extend(sorted([*video_path.glob("mask*")]))
+    image_paths.extend(sorted([*split_path.rglob("image*")]))
+    mask_paths.extend(sorted([*split_path.rglob("mask*")]))
     return image_paths, mask_paths
 
 

@@ -78,12 +78,8 @@ def mask_to_setup(mask: Tensor, setup: int) -> Tensor:
     return mask
 
 
-def to_tensor(path, scale=False) -> Tensor:
-    return to_dtype(
-        pil_to_tensor(Image.open(path)),
-        dtype=torch.float,
-        scale=scale,
-    )
+def to_tensor(path, dtype=torch.float, scale=False) -> Tensor:
+    return to_dtype(pil_to_tensor(Image.open(path)), dtype=dtype, scale=scale)
 
 
 def transform(image: Tensor, mask: Tensor, tf: str) -> tuple[Tensor, Tensor]:
@@ -120,7 +116,7 @@ def build_dataset(split: str, tf: str = ""):
             for i_path, m_path in zip(images, masks):
                 image = to_tensor(i_path, scale=True)
                 image = resize(image, [256, 480])
-                mask = to_tensor(m_path, scale=False)
+                mask = to_tensor(m_path, dtype=torch.long)
                 mask = resize(mask, [256, 480])
                 if tf:
                     image, mask = transform(image.cuda(), mask.cuda(), tf)
