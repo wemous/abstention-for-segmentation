@@ -55,22 +55,17 @@ def main():
         num_workers=8,
     )
 
-    warmup_epochs = int(max_epochs * config.warmup_rate) + 1
-
     loss_config = {
-        "name": "DACLoss",
+        "name": "SCELoss",
         "args": {
-            "max_epochs": max_epochs,
-            "warmup_epochs": warmup_epochs,
-            "alpha_final": config.alpha_final,
-            "alpha_init_factor": config.alpha_init_factor,
-            "mu": config.mu,
+            "alpha": config.alpha,
+            "beta": config.beta,
         },
     }
 
-    model = UNet(num_classes + 1, loss_config)
-    # model = DeepLabV3Plus(num_classes+1, loss_config)
-    # model = FPN(num_classes+1, loss_config)
+    model = UNet(num_classes, loss_config)
+    # model = DeepLabV3Plus(num_classes, loss_config)
+    # model = FPN(num_classes, loss_config)
 
     trainer = pl.Trainer(
         devices=1,

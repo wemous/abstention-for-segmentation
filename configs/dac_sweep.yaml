@@ -1,35 +1,13 @@
 program: dac_sweep.py
-project: DAC Segmentation
-name: DAC parameters
+project: thesis
+name: dac parameters-cadis-unet
 method: random
 metric:
   goal: maximize
   name: test/mIoU
 parameters:
-  model:
-    value: DeepLabV3
-  dataset:
-    values: [
-        {
-          "name": "cadis",
-          "image_size": [270, 480],
-          "batch_size": 128,
-          "setup": 1,
-          "max_epochs": 30,
-        },
-        # {
-        #   "name": "ade20k",
-        #   "image_size": [480, 512],
-        #   "batch_size": 64,
-        #   "setup": 3,
-        #   "max_epochs": 30,
-        # },
-      ]
-  lr:
-    min: 0.001
-    max: 0.1
   warmup_rate:
-    values: [0.1, 0.2, 0.3]
+    values: [0.05, 0.1, 0.15, 0.2]
   alpha_init_factor:
     values: [32, 64, 128]
   alpha_final:

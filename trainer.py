@@ -5,25 +5,26 @@ from torch.utils.data import DataLoader
 from models import UNet, DeepLabV3Plus, FPN, PlainUNet, DeepLabV3
 
 import wandb
-from datasets import CaDIS
+from datasets import CaDIS, DSAD, NoisyCaDIS, NoisyDSAD
 
 pl.seed_everything(13)
 torch.set_float32_matmul_precision("high")
 
 batch_size = 64
 
-train_dataset = CaDIS(split="valid", setup=1)
-augmented_dataset = CaDIS(
-    split="train", setup=1, normalized=True, jitter=True, gaussian=True, flipped=True
-)
+train_dataset = NoisyCaDIS(noise_level=3, setup=1)
 valid_dataset = CaDIS(split="valid", setup=1)
 test_dataset = CaDIS(split="test", setup=1)
+num_classes = test_dataset.num_classes[1]
 
-num_classes = train_dataset.num_classes[1]
+# train_dataset = NoisyDSAD(noise_level=3)
+# valid_dataset = DSAD(split="valid")
+# test_dataset = DSAD(split="test")
+# num_classes = 8
 
 
 train_loader = DataLoader(
-    augmented_dataset,
+    train_dataset,
     batch_size=batch_size,
     shuffle=True,
     drop_last=False,
@@ -45,36 +46,32 @@ test_loader = DataLoader(
 )
 
 
-loss = {"module": "losses", "name": "CELoss", "args": {}}
-# optimizer = {"module": "torch.optim", "name": "AdamW", "args": {"lr": 1e-4}}
-optimizer = {
-    "module": "torch.optim",
-    "name": "SGD",
-    "args": {
-        "lr": 0.01,
-        "momentum": 0.9,
-        "weight_decay": 5e-4,
-        "nesterov": "True",
-    },
+loss = {"name": "CELoss", "args": {}}
+optimizer_args = {
+    "lr": 0.01,
+    "momentum": 0.9,
+    "weight_decay": 5e-4,
 }
 
 
-# model = PlainUNet(num_classes, loss, optimizer, bilinear=True)
-# model = DeepLabV3(num_classes, loss, optimizer)
-# model = DeepLabV3Plus(num_classes, loss, optimizer)
-# model = FPN(num_classes, loss, optimizer)
-model = UNet(num_classes, loss, optimizer)
+# model = PlainUNet(num_classes, loss, **optimizer_args, bilinear=True)
+# model = DeepLabV3(num_classes, loss, **optimizer_args, pretrained=True)
+# model = DeepLabV3Plus(num_classes, loss, **optimizer_args)
+# model = FPN(num_classes, loss, **optimizer_args)
+model = UNet(num_classes, loss, **optimizer_args)
 
-# wandb.login()
-# logger = WandbLogger(project="DAC Segmentation")
+wandb.login()
+wandb.init(project="DAC Segmentation")
+wandb.log({"noise rate": train_dataset.noise_rate})
+
 trainer = pl.Trainer(
     max_epochs=20,
     enable_checkpointing=False,
     enable_model_summary=False,
     enable_progress_bar=True,
     log_every_n_steps=len(train_loader) // 5,
-    logger=None,
-    strategy="ddp_find_unused_parameters_true",
+    logger=WandbLogger(),
+    # strategy="ddp_find_unused_parameters_true",
     # gradient_clip_val=0.5,
 )
 

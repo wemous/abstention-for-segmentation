@@ -1,12 +1,11 @@
-from importlib import import_module
-
 import lightning as pl
 import torch
 from lightning.pytorch.loggers import WandbLogger
 from torch.utils.data import DataLoader
 
 import wandb
-from datasets import ADE20K, CaDIS
+from datasets import CaDIS, NoisyCaDIS, DSAD, NoisyDSAD
+from models import UNet, DeepLabV3Plus, FPN
 
 pl.seed_everything(13)
 torch.set_float32_matmul_precision("high")
@@ -18,31 +17,21 @@ def main():
     run = wandb.init()
     config = wandb.config
 
-    noise_rate = config.noise_rate
-    dataset = config.dataset
-    setup = dataset["setup"]
-    image_size = dataset["image_size"]
-    batch_size = dataset["batch_size"]
-    max_epochs = dataset["max_epochs"]
+    batch_size = 128
+    max_epochs = 50
 
-    if dataset["name"] == "ade20k":
-        train_dataset = ADE20K(
-            split=0,
-            setup=setup,
-            image_size=image_size,
-            noise_rate=noise_rate,
-        )
-        valid_dataset = ADE20K(split=1, setup=setup, image_size=image_size)
-        test_dataset = ADE20K(split=2, setup=setup, image_size=image_size)
-    elif dataset["name"] == "cadis":
-        train_dataset = CaDIS(
-            split=0,
-            setup=setup,
-            image_size=image_size,
-            noise_rate=noise_rate,
-        )
-        valid_dataset = CaDIS(split=1, setup=setup, image_size=image_size)
-        test_dataset = CaDIS(split=2, setup=setup, image_size=image_size)
+    train_dataset = NoisyCaDIS(noise_level=3, setup=1)
+    valid_dataset = CaDIS(split="valid", setup=1)
+    test_dataset = CaDIS(split="test", setup=1)
+    num_classes = test_dataset.num_classes[1]
+
+    # train_dataset = NoisyDSAD(noise_level=3)
+    # valid_dataset = DSAD(split="valid")
+    # test_dataset = DSAD(split="test")
+    # num_classes = 8
+
+    noise_rate = train_dataset.noise_rate
+    wandb.log({"noise rate": noise_rate})
 
     train_loader = DataLoader(
         train_dataset,
@@ -66,26 +55,21 @@ def main():
         num_workers=8,
     )
 
-    num_classes = train_dataset.num_classes[setup] + 1
     warmup_epochs = int(max_epochs * config.warmup_rate) + 1
 
     loss_config = {
-        "module": "losses",
         "name": "IDACLoss",
         "args": {
-            "noise_rate": noise_rate,
+            "noise_rate": round(noise_rate, 2),
             "warmup_epochs": warmup_epochs,
             "alpha": config.alpha,
         },
     }
 
-    model = getattr(import_module("models"), config.model)(
-        num_classes,
-        loss_config,
-        config.optimizer,
-    )
+    model = UNet(num_classes + 1, loss_config)
+    # model = DeepLabV3Plus(num_classes+1, loss_config)
+    # model = FPN(num_classes+1, loss_config)
 
-    logger = WandbLogger(project="DAC Segmentation", id=run.id)
     trainer = pl.Trainer(
         devices=1,
         max_epochs=max_epochs,
@@ -93,7 +77,7 @@ def main():
         enable_model_summary=False,
         enable_progress_bar=True,
         log_every_n_steps=len(train_loader) // 5,
-        logger=logger,
+        logger=WandbLogger(id=run.id),
     )
 
     trainer.fit(model, train_loader, valid_loader)
