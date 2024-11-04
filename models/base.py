@@ -1,28 +1,36 @@
 from abc import ABC, abstractmethod
-from importlib import import_module
 
 from lightning import LightningModule
 from torch import Tensor, softmax
 from torch.optim.lr_scheduler import MultiplicativeLR
+from torch.optim.sgd import SGD
 from torchmetrics.functional.classification import (
     multiclass_f1_score,
     multiclass_jaccard_index,
 )
 
+import losses
+
 
 class BaseModel(LightningModule, ABC):
-    def __init__(self, num_classes: int, loss: dict, optimizer: dict, model_name: str):
+    def __init__(
+        self,
+        num_classes: int,
+        loss: dict,
+        lr=0.01,
+        momentum=0.9,
+        weight_decay=5e-4,
+        model_name: str = "UNet",
+    ):
         super().__init__()
         num_classes = num_classes - 1 if "DAC" in loss["name"] else num_classes
         self.num_classes = num_classes
-        self.loss_function = getattr(import_module(loss["module"]), loss["name"])(
-            **loss["args"]
-        ).to(self.device)
-        self.optimizer_class = getattr(
-            import_module(optimizer["module"]), optimizer["name"]
-        )
-        self.optimizer_args = optimizer["args"]
-
+        self.loss_function = getattr(losses, loss["name"])(**loss["args"]).to(self.device)
+        self.optimizer_args = {
+            "lr": lr,
+            "momentum": momentum,
+            "weight_decay": weight_decay,
+        }
         self.model_name = model_name
 
         self.save_hyperparameters()
@@ -32,7 +40,7 @@ class BaseModel(LightningModule, ABC):
 
     def training_step(self, batch, batch_idx) -> Tensor:
         images = batch[0].to(self.device)
-        targets = batch[1].to(self.device)
+        targets = batch[1].to(self.device).squeeze().long()
         preds = self.forward(images)
         if "DAC" in self.loss_function._get_name():
             loss, ce_loss, regularization, abstention_rate = self.loss_function(
@@ -57,7 +65,7 @@ class BaseModel(LightningModule, ABC):
 
     def validation_step(self, batch, batch_idx) -> Tensor:
         images = batch[0].to(self.device)
-        targets = batch[1].to(self.device)
+        targets = batch[1].to(self.device).squeeze().long()
         preds = self.forward(images)
         loss = self.loss_function(preds, targets)
         self.log(
@@ -80,7 +88,7 @@ class BaseModel(LightningModule, ABC):
 
     def test_step(self, batch, batch_idx):
         images = batch[0].to(self.device)
-        targets = batch[1].to(self.device)
+        targets = batch[1].to(self.device).squeeze().long()
         preds = self.forward(images)
         if "DAC" in self.loss_function._get_name():
             preds = preds[:, :-1, :, :]
@@ -93,15 +101,12 @@ class BaseModel(LightningModule, ABC):
         self.log("test/mIoU", miou, on_epoch=True, sync_dist=True)
 
     def configure_optimizers(self):
-        optimizer = self.optimizer_class(self.parameters(), **self.optimizer_args)
-        if self.optimizer_class.__name__ == "SGD":
-            return {
-                "optimizer": optimizer,
-                "lr_scheduler": {
-                    "scheduler": MultiplicativeLR(optimizer, lambda _: 0.1),
-                    "interval": "epoch",
-                    "frequency": self.trainer.max_epochs // 3,  # type: ignore
-                },
-            }
-        else:
-            return optimizer
+        optimizer = SGD(self.parameters(), **self.optimizer_args, nesterov=True)  # type: ignore
+        return {
+            "optimizer": optimizer,
+            "lr_scheduler": {
+                "scheduler": MultiplicativeLR(optimizer, lambda _: 1 / 3),
+                "interval": "epoch",
+                "frequency": self.trainer.max_epochs // 5,  # type: ignore
+            },
+        }

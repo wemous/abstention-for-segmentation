@@ -82,10 +82,13 @@ class PlainUNet(BaseModel):
         self,
         num_classes: int,
         loss: dict,
-        optimizer: dict,
+        lr=0.01,
+        momentum=0.9,
+        weight_decay=5e-4,
         bilinear=False,
+        **kwargs
     ):
-        super().__init__(num_classes, loss, optimizer, model_name="UNet")
+        super().__init__(num_classes, loss, lr, momentum, weight_decay, model_name="UNet")
         self.n_channels = 3
         self.bilinear = bilinear
 

@@ -7,11 +7,21 @@ from models.base import BaseModel
 
 
 class FPN(BaseModel):
-    def __init__(self, num_classes: int, loss: dict, optimizer: dict, **kwargs):
+    def __init__(
+        self,
+        num_classes: int,
+        loss: dict,
+        lr=0.01,
+        momentum=0.9,
+        weight_decay=5e-4,
+        **kwargs
+    ):
         super().__init__(
-            num_classes=num_classes,
-            loss=loss,
-            optimizer=optimizer,
+            num_classes,
+            loss,
+            lr,
+            momentum,
+            weight_decay,
             model_name="FPN",
         )
         self.net = fpn(encoder_name="resnet50", classes=num_classes, **kwargs)
@@ -21,11 +31,21 @@ class FPN(BaseModel):
 
 
 class DeepLabV3Plus(BaseModel):
-    def __init__(self, num_classes: int, loss: dict, optimizer: dict, **kwargs):
+    def __init__(
+        self,
+        num_classes: int,
+        loss: dict,
+        lr=0.01,
+        momentum=0.9,
+        weight_decay=5e-4,
+        **kwargs
+    ):
         super().__init__(
-            num_classes=num_classes,
-            loss=loss,
-            optimizer=optimizer,
+            num_classes,
+            loss,
+            lr,
+            momentum,
+            weight_decay,
             model_name="DeepLabV3+",
         )
         self.net = deeplab(encoder_name="resnet50", classes=num_classes, **kwargs)
@@ -35,11 +55,21 @@ class DeepLabV3Plus(BaseModel):
 
 
 class UNet(BaseModel):
-    def __init__(self, num_classes: int, loss: dict, optimizer: dict, **kwargs):
+    def __init__(
+        self,
+        num_classes: int,
+        loss: dict,
+        lr=0.01,
+        momentum=0.9,
+        weight_decay=5e-4,
+        **kwargs
+    ):
         super().__init__(
-            num_classes=num_classes,
-            loss=loss,
-            optimizer=optimizer,
+            num_classes,
+            loss,
+            lr,
+            momentum,
+            weight_decay,
             model_name="UNet",
         )
         self.net = unet(encoder_name="resnet50", classes=num_classes, **kwargs)

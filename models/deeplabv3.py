@@ -10,14 +10,18 @@ class DeepLabV3(BaseModel):
         self,
         num_classes: int,
         loss: dict,
-        optimizer: dict,
+        lr=0.01,
+        momentum=0.9,
+        weight_decay=5e-4,
         pretrained=True,
-        **kwargs,
+        **kwargs
     ):
         super().__init__(
-            num_classes=num_classes,
-            loss=loss,
-            optimizer=optimizer,
+            num_classes,
+            loss,
+            lr,
+            momentum,
+            weight_decay,
             model_name="DeepLabV3",
         )
         self.is_pretrained = pretrained
