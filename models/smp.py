@@ -11,9 +11,9 @@ class FPN(BaseModel):
         self,
         num_classes: int,
         loss: dict,
-        lr=0.01,
+        lr=0.05,
         momentum=0.9,
-        weight_decay=5e-4,
+        weight_decay=5e-3,
         **kwargs
     ):
         super().__init__(
@@ -35,9 +35,9 @@ class DeepLabV3Plus(BaseModel):
         self,
         num_classes: int,
         loss: dict,
-        lr=0.01,
+        lr=0.05,
         momentum=0.9,
-        weight_decay=5e-4,
+        weight_decay=5e-3,
         **kwargs
     ):
         super().__init__(
@@ -59,9 +59,9 @@ class UNet(BaseModel):
         self,
         num_classes: int,
         loss: dict,
-        lr=0.01,
+        lr=0.05,
         momentum=0.9,
-        weight_decay=5e-4,
+        weight_decay=5e-3,
         **kwargs
     ):
         super().__init__(

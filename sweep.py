@@ -1,12 +1,11 @@
-from importlib import import_module
-
 import lightning as pl
 import torch
 from lightning.pytorch.loggers import WandbLogger
 from torch.utils.data import DataLoader
 
 import wandb
-from datasets import ADE20K, CaDIS
+from datasets import CaDIS, NoisyCaDIS, DSAD, NoisyDSAD
+import models
 
 pl.seed_everything(13)
 torch.set_float32_matmul_precision("high")
@@ -15,37 +14,28 @@ wandb.login()
 
 
 def main():
-    run = wandb.init()
+    run = wandb.init(project="thesis")
     config = wandb.config
 
-    noise_rate = config.noise_rate
-    noise_type = config.noise_type
-    dataset = config.dataset
-    setup = dataset["setup"]
-    image_size = dataset["image_size"]
-    batch_size = dataset["batch_size"]
-    max_epochs = dataset["max_epochs"]
+    max_epochs = 50
+    noise_level = config.noise_level
+    dataset_name = config.dataset["name"]
+    augmentations = config.dataset["augmentations"]
+    batch_size = config.dataset["batch_size"]
 
-    if dataset["name"] == "ade20k":
-        train_dataset = ADE20K(
-            split=0,
-            setup=setup,
-            image_size=image_size,
-            noise_rate=noise_rate,
-            noise_type=noise_type,
-        )
-        valid_dataset = ADE20K(split=1, setup=setup, image_size=image_size)
-        test_dataset = ADE20K(split=2, setup=setup, image_size=image_size)
-    elif dataset["name"] == "cadis":
-        train_dataset = CaDIS(
-            split=0,
-            setup=setup,
-            image_size=image_size,
-            noise_rate=noise_rate,
-            noise_type=noise_type,
-        )
-        valid_dataset = CaDIS(split=1, setup=setup, image_size=image_size)
-        test_dataset = CaDIS(split=2, setup=setup, image_size=image_size)
+    if dataset_name == "cadis":
+        setup = config.dataset["setup"]
+        train_dataset = NoisyCaDIS(noise_level=noise_level, setup=setup, **augmentations)
+        valid_dataset = CaDIS(split="valid", setup=setup)
+        test_dataset = CaDIS(split="test", setup=setup)
+        num_classes = test_dataset.num_classes[setup]
+        lr = 0.05
+    elif dataset_name == "dsad":
+        train_dataset = NoisyDSAD(noise_level=noise_level, **augmentations)
+        valid_dataset = DSAD(split="valid")
+        test_dataset = DSAD(split="test")
+        num_classes = 8
+        lr = 0.1
 
     train_loader = DataLoader(
         train_dataset,
@@ -69,39 +59,46 @@ def main():
         num_workers=8,
     )
 
-    num_classes = train_dataset.num_classes[setup]
+    noise_rate = round(train_dataset.noise_rate, 2)
 
     if config.loss == "DACLoss":
         loss_args = {"max_epochs": max_epochs}
         num_classes += 1
-    elif config.loss == "IDACLoss":
-        loss_args = {"noise_rate": noise_rate, "warmup_epochs": max_epochs // 5}
+    elif config.loss in ["IDACLoss", "ASCELoss"]:
+        loss_args = {"noise_rate": noise_rate, "max_epochs": max_epochs}
         num_classes += 1
+    elif config.loss == "SCELoss":
+        loss_args = {"noise_rate": noise_rate}
     else:
         loss_args = {}
 
     loss_config = {
-        "module": "losses",
         "name": config.loss,
         "args": loss_args,
     }
 
-    model = getattr(import_module("models"), config.model)(
+    optimizer_args = {
+        "lr": lr,
+        "momentum": 0.9,
+        "weight_decay": 5e-3,
+    }
+
+    model = getattr(models, config.model)(
         num_classes,
         loss_config,
-        config.optimizer,
+        **optimizer_args,
     )
 
-    logger = WandbLogger(project="DAC Segmentation", id=run.id)
+    wandb.log({"noise rate": noise_rate})
+
     trainer = pl.Trainer(
         devices=1,
         max_epochs=max_epochs,
         enable_checkpointing=False,
         enable_model_summary=False,
         enable_progress_bar=True,
-        log_every_n_steps=len(train_loader) // 4 if dataset["name"] == "cadis" else None,
-        logger=logger,
-        gradient_clip_val=0.5,
+        log_every_n_steps=len(train_loader) // 5,
+        logger=WandbLogger(id=run.id),
     )
 
     trainer.fit(model, train_loader, valid_loader)

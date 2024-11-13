@@ -17,13 +17,18 @@ class BaseModel(LightningModule, ABC):
         self,
         num_classes: int,
         loss: dict,
-        lr=0.01,
+        lr=0.05,
         momentum=0.9,
-        weight_decay=5e-4,
+        weight_decay=5e-3,
         model_name: str = "UNet",
     ):
         super().__init__()
-        num_classes = num_classes - 1 if "DAC" in loss["name"] else num_classes
+        self.is_abstaining = False
+        self.loss_name = loss["name"]
+        abstaining_losses = ["DACLoss", "IDACLoss", "ASCELoss"]
+        if self.loss_name in abstaining_losses:
+            self.is_abstaining = True
+            num_classes -= 1
         self.num_classes = num_classes
         self.loss_function = getattr(losses, loss["name"])(**loss["args"]).to(self.device)
         self.optimizer_args = {
@@ -42,16 +47,17 @@ class BaseModel(LightningModule, ABC):
         images = batch[0].to(self.device)
         targets = batch[1].to(self.device).squeeze().long()
         preds = self.forward(images)
-        if "DAC" in self.loss_function._get_name():
-            loss, ce_loss, regularization, abstention_rate = self.loss_function(
+        if self.is_abstaining:
+            output = self.loss_function(
                 preds,
                 targets,
                 training=True,
                 epoch=self.current_epoch,
             )
-            self.log("CE term", ce_loss, sync_dist=True)
-            self.log("Regularization", regularization, sync_dist=True)
-            self.log("Abstention rate", abstention_rate, sync_dist=True)
+
+            loss = output.pop("loss")
+            for k, v in output.items():
+                self.log(k, v, sync_dist=True)
         else:
             loss = self.loss_function(preds, targets)
         self.log(
@@ -75,12 +81,12 @@ class BaseModel(LightningModule, ABC):
             on_epoch=True,
             sync_dist=True,
         )
-        if "DAC" in self.loss_function._get_name():
+        if self.is_abstaining:
             preds = preds[:, :-1, :, :]
         preds = softmax(preds, 1).argmax(1).detach()
         dice = multiclass_f1_score(preds, targets, self.num_classes)
         miou = multiclass_jaccard_index(preds, targets, self.num_classes)
-        accuracy = (preds == targets).float().mean().item()
+        accuracy = (preds == targets).float().mean()
         self.log("valid/Accuracy", accuracy, on_epoch=True, prog_bar=True, sync_dist=True)
         self.log("valid/Dice", dice, on_epoch=True, prog_bar=True, sync_dist=True)
         self.log("valid/mIoU", miou, on_epoch=True, prog_bar=True, sync_dist=True)
@@ -90,12 +96,12 @@ class BaseModel(LightningModule, ABC):
         images = batch[0].to(self.device)
         targets = batch[1].to(self.device).squeeze().long()
         preds = self.forward(images)
-        if "DAC" in self.loss_function._get_name():
+        if self.is_abstaining:
             preds = preds[:, :-1, :, :]
         preds = softmax(preds, 1).argmax(1).detach()
         dice = multiclass_f1_score(preds, targets, self.num_classes)
         miou = multiclass_jaccard_index(preds, targets, self.num_classes)
-        accuracy = (preds == targets).float().mean().item()
+        accuracy = (preds == targets).float().mean()
         self.log("test/Accuracy", accuracy, on_epoch=True, sync_dist=True)
         self.log("test/Dice", dice, on_epoch=True, sync_dist=True)
         self.log("test/mIoU", miou, on_epoch=True, sync_dist=True)
@@ -105,8 +111,8 @@ class BaseModel(LightningModule, ABC):
         return {
             "optimizer": optimizer,
             "lr_scheduler": {
-                "scheduler": MultiplicativeLR(optimizer, lambda _: 1 / 3),
+                "scheduler": MultiplicativeLR(optimizer, lambda _: 0.2),
                 "interval": "epoch",
-                "frequency": self.trainer.max_epochs // 5,  # type: ignore
+                "frequency": self.trainer.max_epochs // 4,  # type: ignore
             },
         }

@@ -17,21 +17,19 @@ def main():
     run = wandb.init()
     config = wandb.config
 
-    batch_size = 128
-    max_epochs = 50
+    max_epochs = 30
 
     train_dataset = NoisyCaDIS(noise_level=3, setup=1)
     valid_dataset = CaDIS(split="valid", setup=1)
     test_dataset = CaDIS(split="test", setup=1)
     num_classes = test_dataset.num_classes[1]
+    batch_size = 128
 
     # train_dataset = NoisyDSAD(noise_level=3)
     # valid_dataset = DSAD(split="valid")
     # test_dataset = DSAD(split="test")
     # num_classes = 8
-
-    noise_rate = train_dataset.noise_rate
-    wandb.log({"noise rate": noise_rate})
+    # batch_size = 64
 
     train_loader = DataLoader(
         train_dataset,
@@ -55,20 +53,23 @@ def main():
         num_workers=8,
     )
 
-    warmup_epochs = int(max_epochs * config.warmup_rate) + 1
-
     loss_config = {
         "name": "DACLoss",
         "args": {
             "max_epochs": max_epochs,
-            "warmup_epochs": warmup_epochs,
+            "warmup_rate": config.warmup_rate,
             "alpha_final": config.alpha_final,
             "alpha_init_factor": config.alpha_init_factor,
             "mu": config.mu,
         },
     }
+    optimizer_args = {
+        "lr": 0.05,
+        "momentum": 0.9,
+        "weight_decay": 5e-3,
+    }
 
-    model = UNet(num_classes + 1, loss_config)
+    model = UNet(num_classes + 1, loss_config, **optimizer_args)
     # model = DeepLabV3Plus(num_classes+1, loss_config)
     # model = FPN(num_classes+1, loss_config)
 

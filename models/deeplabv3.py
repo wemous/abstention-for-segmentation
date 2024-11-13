@@ -10,9 +10,9 @@ class DeepLabV3(BaseModel):
         self,
         num_classes: int,
         loss: dict,
-        lr=0.01,
+        lr=0.05,
         momentum=0.9,
-        weight_decay=5e-4,
+        weight_decay=5e-3,
         pretrained=True,
         **kwargs
     ):
