@@ -1,6 +1,6 @@
 program: sweep.py
 project: thesis
-name: main
+name: main-unet-100 epochs
 method: grid
 metric:
   goal: maximize
@@ -12,15 +12,15 @@ parameters:
   dataset:
     values:
       [
-        { "name": "cadis", "batch_size": 128, "setup": 1, "augmentations": {} },
-        { "name": "dsad", "batch_size": 64, "augmentations": {} },
+        { "name": "cadis", "batch_size": 142, "setup": 1, "augmentations": {} },
+        {
+          "name": "dsad",
+          "batch_size": 120,
+          "augmentations": { "normalized": True, "rotated": True },
+        },
       ]
-  # "flipped": True,
-  # "gaussian": True,
-  # "normalized": True,
-  # "rotated": True,
   noise_level:
     values: [1, 2, 3, 4, 5]
     # value: 5
   loss:
-    values: [CELoss, DACLoss, IDACLoss, SCELoss, ASCELoss]
+    values: [CELoss, GCELoss, SCELoss, DACLoss, IDACLoss]

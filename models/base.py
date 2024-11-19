@@ -25,8 +25,7 @@ class BaseModel(LightningModule, ABC):
         super().__init__()
         self.is_abstaining = False
         self.loss_name = loss["name"]
-        abstaining_losses = ["DACLoss", "IDACLoss", "ASCELoss"]
-        if self.loss_name in abstaining_losses:
+        if "DAC" in self.loss_name:
             self.is_abstaining = True
             num_classes -= 1
         self.num_classes = num_classes

@@ -17,7 +17,7 @@ def main():
     run = wandb.init(project="thesis")
     config = wandb.config
 
-    max_epochs = 50
+    max_epochs = 100
     noise_level = config.noise_level
     dataset_name = config.dataset["name"]
     augmentations = config.dataset["augmentations"]
@@ -29,13 +29,11 @@ def main():
         valid_dataset = CaDIS(split="valid", setup=setup)
         test_dataset = CaDIS(split="test", setup=setup)
         num_classes = test_dataset.num_classes[setup]
-        lr = 0.05
     elif dataset_name == "dsad":
         train_dataset = NoisyDSAD(noise_level=noise_level, **augmentations)
         valid_dataset = DSAD(split="valid")
         test_dataset = DSAD(split="test")
         num_classes = 8
-        lr = 0.1
 
     train_loader = DataLoader(
         train_dataset,
@@ -61,24 +59,16 @@ def main():
 
     noise_rate = round(train_dataset.noise_rate, 2)
 
-    if config.loss == "DACLoss":
-        loss_args = {"max_epochs": max_epochs}
+    if "DAC" in config.loss:
         num_classes += 1
-    elif config.loss in ["IDACLoss", "ASCELoss"]:
-        loss_args = {"noise_rate": noise_rate, "max_epochs": max_epochs}
-        num_classes += 1
-    elif config.loss == "SCELoss":
-        loss_args = {"noise_rate": noise_rate}
-    else:
-        loss_args = {}
 
     loss_config = {
         "name": config.loss,
-        "args": loss_args,
+        "args": {"noise_rate": noise_rate, "max_epochs": max_epochs},
     }
 
     optimizer_args = {
-        "lr": lr,
+        "lr": 0.05,
         "momentum": 0.9,
         "weight_decay": 5e-3,
     }

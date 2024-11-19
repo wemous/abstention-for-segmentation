@@ -17,19 +17,19 @@ def main():
     run = wandb.init()
     config = wandb.config
 
-    max_epochs = 30
+    max_epochs = 50
 
-    train_dataset = NoisyCaDIS(noise_level=3, setup=1)
+    train_dataset = NoisyCaDIS(noise_level=5, setup=1)
     valid_dataset = CaDIS(split="valid", setup=1)
     test_dataset = CaDIS(split="test", setup=1)
     num_classes = test_dataset.num_classes[1]
-    batch_size = 128
+    batch_size = 142
 
     # train_dataset = NoisyDSAD(noise_level=3)
     # valid_dataset = DSAD(split="valid")
     # test_dataset = DSAD(split="test")
     # num_classes = 8
-    # batch_size = 64
+    # batch_size = 50
 
     train_loader = DataLoader(
         train_dataset,
@@ -57,10 +57,7 @@ def main():
         "name": "DACLoss",
         "args": {
             "max_epochs": max_epochs,
-            "warmup_rate": config.warmup_rate,
             "alpha_final": config.alpha_final,
-            "alpha_init_factor": config.alpha_init_factor,
-            "mu": config.mu,
         },
     }
     optimizer_args = {

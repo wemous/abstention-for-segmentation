@@ -16,13 +16,14 @@ wandb.login()
 def main():
     run = wandb.init()
     config = wandb.config
-    max_epochs = 30
 
-    train_dataset = NoisyCaDIS(noise_level=3, setup=1)
+    max_epochs = 25
+
+    train_dataset = NoisyCaDIS(noise_level=config.noise_level, setup=1)
     valid_dataset = CaDIS(split="valid", setup=1)
     test_dataset = CaDIS(split="test", setup=1)
     num_classes = test_dataset.num_classes[1]
-    batch_size = 128
+    batch_size = 142
 
     # train_dataset = NoisyDSAD(noise_level=3)
     # valid_dataset = DSAD(split="valid")
@@ -53,25 +54,20 @@ def main():
     )
 
     loss_config = {
-        "name": "ASCELoss",
+        "name": "GCELoss",
         "args": {
-            "noise_rate": round(train_dataset.noise_rate, 2),
-            "max_epochs": max_epochs,
-            "warmup_rate": 0.2,
-            "alpha": config.alpha,
-            "beta": config.beta,
-            "gamme": 1,
+            "q": config.q,
         },
     }
     optimizer_args = {
-        "lr": config.lr,
+        "lr": 0.05,
         "momentum": 0.9,
         "weight_decay": 5e-3,
     }
 
-    model = UNet(num_classes + 1, loss_config, **optimizer_args)
-    # model = DeepLabV3Plus(num_classes+1, loss_config)
-    # model = FPN(num_classes+1, loss_config)
+    model = UNet(num_classes, loss_config, **optimizer_args)
+    # model = DeepLabV3Plus(num_classes, loss_config)
+    # model = FPN(num_classes, loss_config)
 
     trainer = pl.Trainer(
         devices=1,

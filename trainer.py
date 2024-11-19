@@ -10,17 +10,20 @@ from datasets import CaDIS, DSAD, NoisyCaDIS, NoisyDSAD
 pl.seed_everything(13)
 torch.set_float32_matmul_precision("high")
 
-batch_size = 64
+max_epochs = 25
 
 train_dataset = NoisyCaDIS(noise_level=5, setup=1)
 valid_dataset = CaDIS(split="valid", setup=1)
 test_dataset = CaDIS(split="test", setup=1)
 num_classes = test_dataset.num_classes[1]
+batch_size = 142
 
 # train_dataset = NoisyDSAD(noise_level=1)
 # valid_dataset = DSAD(split="valid")
 # test_dataset = DSAD(split="test")
 # num_classes = 8
+# batch_size = 50
+# batch_size = 200
 
 
 train_loader = DataLoader(
@@ -45,37 +48,29 @@ test_loader = DataLoader(
     num_workers=8,
 )
 
+noise_Rate = round(train_dataset.noise_rate, 2)
 
-# loss = {
-#     "name": "ASCELoss",
-#     "args": {
-#         "noise_rate": train_dataset.noise_rate,
-#         "max_epochs": 30,
-#         "warmup_rate": 0.2,
-#         "alpha": 0.75,
-#         "beta": 0.3,
-#         "gamma": 1,
-#     },
-# }
-# loss = {
-#     "name": "ASCELoss",
-#     "args": {
-#         "noise_rate": train_dataset.noise_rate,
-#         "max_epochs": 30,
-#         "warmup_rate": 0.2,
-#         "A": -2,
-#         # "alpha": 1,
-#         # "beta": 1,
-#         # "gamma": 5,
-#     },
-# }
 loss = {
     "name": "DACLoss",
     "args": {
-        "max_epochs": 30,
+        "max_epochs": max_epochs,
         "warmup_rate": 0.2,
     },
 }
+# loss = {
+#     "name": "GCELoss",
+#     "args": {
+#         "q": 0.001,
+#     },
+# }
+# loss = {
+#     "name": "IDACLoss",
+#     "args": {
+#         "max_epochs": 30,
+#         "warmup_rate": 0.2,
+#         "noise_rate": noise_Rate,
+#     },
+# }
 # loss = {
 #     "name": "SCELoss",
 #     "args": {"alpha": 0.5, "beta": 0.75},
@@ -99,13 +94,12 @@ model = UNet(num_classes + 1, loss, **optimizer_args)
 
 trainer = pl.Trainer(
     # accelerator="cpu",
-    max_epochs=30,
+    max_epochs=max_epochs,
     enable_checkpointing=False,
     enable_model_summary=False,
     enable_progress_bar=True,
     log_every_n_steps=len(train_loader) // 5,
     # logger=WandbLogger(),
-    logger=None,
     # strategy="ddp_find_unused_parameters_true",
     # gradient_clip_val=0.5,
 )
