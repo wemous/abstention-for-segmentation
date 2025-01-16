@@ -4,13 +4,30 @@ import torch.nn.functional as F
 from torch import Tensor
 
 
+class DiceLoss(nn.Module):
+    def __init__(self, **kwargs):
+        super().__init__()
+
+    def forward(self, preds: Tensor, targets: Tensor, abstention=0):
+        dims = (-1, -2)
+        preds = preds.log_softmax(dim=1).exp()
+        targets = F.one_hot(targets, preds.shape[1]).movedim(-1, 1)
+        instersection = (preds * targets * (1 + abstention)).sum(dims)
+        # sum_preds = preds.sum(dims)
+        # sum_targets = targets.sum(dims)
+        sum_preds = (preds / (1 + abstention)).sum(dims)
+        sum_targets = (targets / (1 + abstention)).sum(dims)
+        score = (2 * instersection / (sum_preds + sum_targets)).clamp_max(1).mean()
+        loss = -torch.log(score)
+        return loss, score
+
+
 class CELoss(nn.Module):
     def __init__(self, **kwargs):
         super().__init__()
-        self.ce = nn.CrossEntropyLoss()
 
     def forward(self, preds: Tensor, targets: Tensor) -> Tensor:
-        return self.ce(preds, targets)
+        return F.cross_entropy(preds, targets)
 
 
 class GCELoss(nn.Module):
@@ -55,8 +72,8 @@ class DACLoss(nn.Module):
     def __init__(
         self,
         max_epochs: int,
-        warmup_rate: float = 0.2,
-        alpha_final=2.5,
+        warmup_epochs: int = 20,
+        alpha_final=2.0,
         alpha_init_factor=64,
         mu=0.05,
         **kwargs,
@@ -65,7 +82,7 @@ class DACLoss(nn.Module):
 
         # fixed values
         self.max_epochs = max_epochs
-        self.warmup_epochs = round(max_epochs * warmup_rate)
+        self.warmup_epochs = warmup_epochs
         self.alpha_final = alpha_final
         self.alpha_init_factor = alpha_init_factor
         self.mu = mu
@@ -89,15 +106,9 @@ class DACLoss(nn.Module):
         if not training:
             return ce_loss
         else:
-            abstention_rate = (preds.argmax(dim=1) == preds.shape[1] - 1).float().mean()
-            abstention = torch.exp(F.log_softmax(preds, dim=1))[:, -1, :, :].mean()
-            abstention = torch.min(
-                abstention,
-                torch.tensor(
-                    1 - self.epsilon,
-                    device=abstention.device,
-                ),
-            )
+            preds = F.log_softmax(preds, dim=1).exp()
+            abstention_rate = (preds.argmax(dim=1) == (preds.shape[1] - 1)).float().mean()
+            abstention = preds[:, -1, :, :].mean().clamp_max(1 - self.epsilon)
             regularization = 0
 
             if epoch < self.warmup_epochs:
@@ -123,9 +134,8 @@ class DACLoss(nn.Module):
                     if epoch > self.alpha_update_epoch:
                         self.alpha += self.alpha_step  # type: ignore
                         self.alpha_update_epoch = epoch
-                ce_loss = (1 - abstention) * ce_loss
                 regularization = -self.alpha * torch.log(1 - abstention)
-                loss = ce_loss + regularization
+                loss = (1 - abstention) * ce_loss + regularization
                 # loss = (1 - abstention) * (
                 #     ce_loss + torch.log(1 - abstention)
                 # ) - self.alpha * torch.log(1 - abstention)
@@ -146,13 +156,13 @@ class IDACLoss(nn.Module):
         self,
         noise_rate: float,
         max_epochs: int,
-        warmup_rate: float = 0.2,
+        warmup_epochs: int = 20,
         alpha=None,
         **kwargs,
     ):
         super().__init__()
         self.noise_rate = noise_rate
-        self.warmup_epochs = round(max_epochs * warmup_rate)
+        self.warmup_epochs = warmup_epochs
         self.alpha = alpha if alpha else max(1, noise_rate * 20)
 
     def forward(
@@ -167,17 +177,16 @@ class IDACLoss(nn.Module):
         if not training:
             return ce_loss
         else:
-            preds = torch.exp(F.log_softmax(preds, dim=1))
-            abstention_rate = (preds.argmax(dim=1) == preds.shape[1] - 1).float().mean()
+            preds = F.log_softmax(preds, dim=1).exp()
+            abstention_rate = (preds.argmax(dim=1) == (preds.shape[1] - 1)).float().mean()
             abstention = preds[:, -1, :, :].mean()
             regularization = 0
 
             if epoch < self.warmup_epochs:
                 loss = ce_loss
             else:
-                ce_loss = (1 - abstention) * ce_loss
                 regularization = self.alpha * (self.noise_rate - abstention) ** 2
-                loss = ce_loss + regularization
+                loss = (1 - abstention) * ce_loss + regularization
             output = {
                 "loss": loss,
                 "CE loss": ce_loss,
