@@ -6,24 +6,26 @@ from models import UNet, DeepLabV3Plus, FPN, PlainUNet, DeepLabV3
 
 import wandb
 from datasets import CaDIS, DSAD, NoisyCaDIS, NoisyDSAD
+from models import SegmentationModel
 
-pl.seed_everything(13)
+seed = 1
+torch.use_deterministic_algorithms(True, warn_only=True)
+pl.seed_everything(seed, workers=True)
 torch.set_float32_matmul_precision("high")
 
-max_epochs = 25
+max_epochs = 50
+batch_size = 128
 
+# train_dataset = CaDIS(split="train", setup=1)
 train_dataset = NoisyCaDIS(noise_level=5, setup=1)
 valid_dataset = CaDIS(split="valid", setup=1)
 test_dataset = CaDIS(split="test", setup=1)
-num_classes = test_dataset.num_classes[1]
-batch_size = 142
+num_classes = 8
 
-# train_dataset = NoisyDSAD(noise_level=1)
+# train_dataset = NoisyDSAD(noise_level=5, normalized=True, rotated=True)
 # valid_dataset = DSAD(split="valid")
 # test_dataset = DSAD(split="test")
 # num_classes = 8
-# batch_size = 50
-# batch_size = 200
 
 
 train_loader = DataLoader(
@@ -48,63 +50,75 @@ test_loader = DataLoader(
     num_workers=8,
 )
 
-noise_Rate = round(train_dataset.noise_rate, 2)
+noise_rate = round(train_dataset.noise_rate, 2)
 
+# loss = {
+#     "name": "CELoss",
+#     "args": {},
+# }
+# loss = {
+#     "name": "DiceLoss",
+#     "args": {},
+# }
 loss = {
-    "name": "DACLoss",
+    "name": "ADLoss",
     "args": {
         "max_epochs": max_epochs,
-        "warmup_rate": 0.2,
+        "warmup_epochs": 20,
+        "alpha_final": 2.5,
+        "gamma": 1.75,
     },
 }
 # loss = {
-#     "name": "GCELoss",
+#     "name": "DACLoss",
 #     "args": {
-#         "q": 0.001,
+#         "max_epochs": max_epochs,
+#         "warmup_epochs": 5,
+#         "alpha_final": 2.0,
 #     },
 # }
 # loss = {
 #     "name": "IDACLoss",
 #     "args": {
-#         "max_epochs": 30,
-#         "warmup_rate": 0.2,
+#         "max_epochs": max_epochs,
+#         "warmup_epochs": 15,
 #         "noise_rate": noise_Rate,
 #     },
 # }
-# loss = {
-#     "name": "SCELoss",
-#     "args": {"alpha": 0.5, "beta": 0.75},
-# }
 optimizer_args = {
-    "lr": 0.05,
+    "lr": 0.1,
     "momentum": 0.9,
     "weight_decay": 5e-3,
 }
 
+model = SegmentationModel(
+    num_classes,
+    loss,
+    model_name="UNet",
+    window_size=16,
+    include_background=True,
+    **optimizer_args,
+)
 
-# model = PlainUNet(num_classes, loss, **optimizer_args, bilinear=True)
-# model = DeepLabV3(num_classes, loss, **optimizer_args, pretrained=True)
-# model = DeepLabV3Plus(num_classes, loss, **optimizer_args)
-# model = FPN(num_classes, loss, **optimizer_args)
-model = UNet(num_classes + 1, loss, **optimizer_args)
+use_wandb = True
 
-# wandb.login()
-# wandb.init(project="thesis")
+if use_wandb:
+    wandb.login()
+    wandb.init(project="xdac", name="adl")
 # wandb.log({"noise rate": train_dataset.noise_rate})
+wandb.log({"seed": seed})
 
 trainer = pl.Trainer(
-    # accelerator="cpu",
+    devices=1,
     max_epochs=max_epochs,
     enable_checkpointing=False,
     enable_model_summary=False,
     enable_progress_bar=True,
-    log_every_n_steps=len(train_loader) // 5,
-    # logger=WandbLogger(),
-    # strategy="ddp_find_unused_parameters_true",
-    # gradient_clip_val=0.5,
+    log_every_n_steps=10,
+    logger=WandbLogger() if use_wandb else None,
 )
 
 trainer.fit(model, train_loader, valid_loader)
 trainer.test(model, test_loader)
 
-# wandb.finish(quiet=True)
+wandb.finish(quiet=True)

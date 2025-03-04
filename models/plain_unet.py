@@ -4,8 +4,6 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
-from .base import BaseModel
-
 
 class DoubleConv(nn.Module):
     """(convolution => [BN] => ReLU) * 2"""
@@ -79,18 +77,9 @@ class OutConv(nn.Module):
         return self.conv(x)
 
 
-class PlainUNet(BaseModel):
-    def __init__(
-        self,
-        num_classes: int,
-        loss: dict,
-        lr=0.05,
-        momentum=0.9,
-        weight_decay=5e-3,
-        bilinear=False,
-        **kwargs
-    ):
-        super().__init__(num_classes, loss, lr, momentum, weight_decay, model_name="UNet")
+class PlainUNet(nn.Module):
+    def __init__(self, num_classes: int, bilinear=False, **kwargs):
+        super().__init__()
         self.n_channels = 3
         self.bilinear = bilinear
         factor = 2 if bilinear else 1

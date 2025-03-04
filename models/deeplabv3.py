@@ -1,29 +1,11 @@
-from torch import Tensor
+from torch import Tensor, nn
 from torchvision.models.segmentation import deeplabv3_resnet50
 from torch.nn import Conv2d
 
-from models.base import BaseModel
 
-
-class DeepLabV3(BaseModel):
-    def __init__(
-        self,
-        num_classes: int,
-        loss: dict,
-        lr=0.05,
-        momentum=0.9,
-        weight_decay=5e-3,
-        pretrained=True,
-        **kwargs
-    ):
-        super().__init__(
-            num_classes,
-            loss,
-            lr,
-            momentum,
-            weight_decay,
-            model_name="DeepLabV3",
-        )
+class DeepLabV3(nn.Module):
+    def __init__(self, num_classes: int, pretrained=True, **kwargs):
+        super().__init__()
         self.is_pretrained = pretrained
         self.net = deeplabv3_resnet50(
             weights="DEFAULT" if pretrained else None,

@@ -1,6 +1,6 @@
 program: sweep.py
 project: thesis
-name: main-unet-100 epochs
+name: main-cadis
 method: grid
 metric:
   goal: maximize
@@ -10,17 +10,19 @@ parameters:
     # values: [UNet, DeepLabV3Plus, FPN]
     value: UNet
   dataset:
-    values:
-      [
-        { "name": "cadis", "batch_size": 142, "setup": 1, "augmentations": {} },
-        {
-          "name": "dsad",
-          "batch_size": 120,
-          "augmentations": { "normalized": True, "rotated": True },
-        },
+    values: [
+        { "name": "cadis", "batch_size": 128, "setup": 1, "augmentations": {} },
+        # {
+        #   "name": "dsad",
+        #   "batch_size": 64,
+        #   "augmentations": { "normalized": True, "rotated": True },
+        # },
       ]
   noise_level:
-    values: [1, 2, 3, 4, 5]
+    values: [0, 1, 2, 3, 4, 5]
     # value: 5
   loss:
-    values: [CELoss, GCELoss, SCELoss, DACLoss, IDACLoss]
+    values: [ADLoss, DiceLoss, DACLoss, IDACLoss, CELoss, SCELoss, GCELoss]
+  seed:
+    values: [-2, -1, 0, 1, 2]
+    # value: 1

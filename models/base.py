@@ -1,16 +1,15 @@
-from abc import ABC, abstractmethod
-
 import torch.nn.functional as F
 from lightning import LightningModule
-from torch import Tensor
+from torch import Tensor, nn
 from torch.optim.lr_scheduler import MultiplicativeLR
 from torch.optim.sgd import SGD
 from torchmetrics.functional.segmentation import dice_score, mean_iou
 
 import losses
+import models
 
 
-class BaseModel(LightningModule, ABC):
+class SegmentationModel(LightningModule):
     def __init__(
         self,
         num_classes: int,
@@ -19,40 +18,67 @@ class BaseModel(LightningModule, ABC):
         momentum=0.9,
         weight_decay=5e-3,
         model_name: str = "UNet",
+        window_size: int = 16,
+        include_background=True,
     ):
         super().__init__()
-        self.is_abstaining = False
+        self.model = getattr(models, model_name)(num_classes).to(self.device)
         self.loss_name = loss["name"]
+
         if "DAC" in self.loss_name:
-            self.is_abstaining = True
             num_classes -= 1
         self.num_classes = num_classes
+
+        if self.loss_name == "ADLoss":
+            self.segmentation_head = self.model.net.segmentation_head
+            in_features = self.segmentation_head[0].in_channels * window_size**2
+            self.model.net.segmentation_head = nn.Identity()
+            self.abstention_head = nn.Sequential(
+                nn.AdaptiveAvgPool2d(window_size),
+                nn.Flatten(1),
+                nn.Linear(in_features, num_classes),
+            )
+
         self.loss_function = getattr(losses, loss["name"])(**loss["args"]).to(self.device)
         self.optimizer_args = {
             "lr": lr,
             "momentum": momentum,
             "weight_decay": weight_decay,
         }
-        self.model_name = model_name
+        self.include_background = include_background
         self.save_hyperparameters()
 
-    @abstractmethod
-    def forward(self, x: Tensor, *args, **kwargs) -> Tensor: ...
+    def forward(self, x: Tensor, *args, **kwargs):
+        output = self.model(x)
+        if self.loss_name == "ADLoss":
+            preds = self.segmentation_head(output)
+            if self.training:
+                abstention = self.abstention_head(output)
+                return preds, abstention
+            else:
+                return preds
+        else:
+            return output
 
     def training_step(self, batch, batch_idx) -> Tensor:
         images = batch[0].to(self.device)
         targets = batch[1].to(self.device).squeeze().long()
-        preds = self.forward(images)
-        if self.is_abstaining:
-            output = self.loss_function(
-                preds, targets, training=True, epoch=self.current_epoch
-            )
-
+        if self.loss_name == "ADLoss":
+            preds, abstention = self.forward(images)
+            output = self.loss_function(preds, targets, abstention, epoch=self.current_epoch)
             loss = output.pop("loss")
             for k, v in output.items():
                 self.log(k, v, sync_dist=True)
         else:
-            loss = self.loss_function(preds, targets)
+            preds = self.forward(images)
+            if "DAC" in self.loss_name:
+                output = self.loss_function(preds, targets, training=True, epoch=self.current_epoch)
+
+                loss = output.pop("loss")
+                for k, v in output.items():
+                    self.log(k, v, sync_dist=True)
+            else:
+                loss = self.loss_function(preds, targets)
         self.log("train/loss", loss, prog_bar=True, on_step=True, sync_dist=True)
         return loss
 
@@ -62,15 +88,26 @@ class BaseModel(LightningModule, ABC):
         preds = self.forward(images)
         loss = self.loss_function(preds, targets)
         self.log("valid/loss", loss, prog_bar=True, on_epoch=True, sync_dist=True)
-        if self.is_abstaining:
+        if "DAC" in self.loss_name:
             preds = preds[:, :-1, :, :]
 
         preds = preds.argmax(1).detach()
         accuracy = (preds == targets).float().mean()
         preds = F.one_hot(preds, self.num_classes).movedim(-1, 1)
         targets = F.one_hot(targets, self.num_classes).movedim(-1, 1)
-        dice = dice_score(preds, targets, self.num_classes, average="none").mean()
-        miou = mean_iou(preds, targets, self.num_classes).mean()
+        dice = dice_score(
+            preds,
+            targets,
+            num_classes=self.num_classes,
+            include_background=self.include_background,
+            average="none",
+        ).mean()
+        miou = mean_iou(
+            preds,
+            targets,
+            num_classes=self.num_classes,
+            include_background=self.include_background,
+        ).mean()
         self.log("valid/Accuracy", accuracy, on_epoch=True, prog_bar=True, sync_dist=True)
         self.log("valid/Dice", dice, on_epoch=True, prog_bar=True, sync_dist=True)
         self.log("valid/mIoU", miou, on_epoch=True, prog_bar=True, sync_dist=True)
@@ -80,26 +117,37 @@ class BaseModel(LightningModule, ABC):
         images = batch[0].to(self.device)
         targets = batch[1].to(self.device).squeeze().long()
         preds = self.forward(images)
-        if self.is_abstaining:
+        if "DAC" in self.loss_name:
             preds = preds[:, :-1, :, :]
 
         preds = preds.argmax(1).detach()
         accuracy = (preds == targets).float().mean()
         preds = F.one_hot(preds, self.num_classes).movedim(-1, 1)
         targets = F.one_hot(targets, self.num_classes).movedim(-1, 1)
-        dice = dice_score(preds, targets, self.num_classes, average="none").mean()
-        miou = mean_iou(preds, targets, self.num_classes).mean()
+        dice = dice_score(
+            preds,
+            targets,
+            num_classes=self.num_classes,
+            include_background=self.include_background,
+            average="none",
+        ).mean()
+        miou = mean_iou(
+            preds,
+            targets,
+            num_classes=self.num_classes,
+            include_background=self.include_background,
+        ).mean()
         self.log("test/Accuracy", accuracy, on_epoch=True, prog_bar=True, sync_dist=True)
         self.log("test/Dice", dice, on_epoch=True, prog_bar=True, sync_dist=True)
         self.log("test/mIoU", miou, on_epoch=True, prog_bar=True, sync_dist=True)
 
     def configure_optimizers(self):
-        optimizer = SGD(self.parameters(), **self.optimizer_args, nesterov=True)  # type: ignore
+        optimizer = SGD(self.parameters(), **self.optimizer_args, nesterov=True)
         return {
             "optimizer": optimizer,
             "lr_scheduler": {
                 "scheduler": MultiplicativeLR(optimizer, lambda _: 0.2),
                 "interval": "epoch",
-                "frequency": self.trainer.max_epochs // 4,  # type: ignore
+                "frequency": self.trainer.max_epochs // 4,
             },
         }

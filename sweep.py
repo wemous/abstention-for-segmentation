@@ -5,17 +5,17 @@ from torch.utils.data import DataLoader
 
 import wandb
 from datasets import CaDIS, NoisyCaDIS, DSAD, NoisyDSAD
-import models
+from models import SegmentationModel
 
-pl.seed_everything(13)
 torch.set_float32_matmul_precision("high")
-
+torch.use_deterministic_algorithms(True, warn_only=True)
 wandb.login()
 
 
 def main():
-    run = wandb.init(project="thesis")
-    config = wandb.config
+    run = wandb.init()
+    config = run.config
+    pl.seed_everything(config.seed, workers=True)
 
     max_epochs = 100
     noise_level = config.noise_level
@@ -58,24 +58,33 @@ def main():
     )
 
     noise_rate = round(train_dataset.noise_rate, 2)
+    class_noise = train_dataset.class_noise
 
     if "DAC" in config.loss:
         num_classes += 1
 
     loss_config = {
         "name": config.loss,
-        "args": {"noise_rate": noise_rate, "max_epochs": max_epochs},
+        "args": {
+            "noise_rate": noise_rate,
+            "max_epochs": max_epochs,
+            "warmup_epochs": 20,
+            "class_noise": class_noise,
+        },
     }
 
     optimizer_args = {
-        "lr": 0.05,
+        "lr": 0.1,
         "momentum": 0.9,
         "weight_decay": 5e-3,
     }
 
-    model = getattr(models, config.model)(
+    model = SegmentationModel(
         num_classes,
         loss_config,
+        model_name=config.model,
+        window_size=16,
+        include_background=True,
         **optimizer_args,
     )
 
@@ -87,7 +96,7 @@ def main():
         enable_checkpointing=False,
         enable_model_summary=False,
         enable_progress_bar=True,
-        log_every_n_steps=len(train_loader) // 5,
+        log_every_n_steps=len(train_loader) // 3,
         logger=WandbLogger(id=run.id),
     )
 
