@@ -1,19 +1,16 @@
 program: dac_sweep.py
-project: thesis
-name: dac parameters-cadis-unet
-method: bayes
+project: xdac
+name: dac
+method: random
 metric:
   goal: maximize
   name: test/mIoU
 parameters:
-  warmup_rate:
-    min: 0.05
-    max: 0.3
-  alpha_init_factor:
-    values: [32, 64, 128]
+  warmup_epochs:
+    min: 5
+    max: 20
   alpha_final:
-    min: 0.5
-    max: 5.0
-  mu:
-    min: 0.01
-    max: 0.5
+    min: 1.0
+    max: 3.0
+  batch_size:
+    values: [64, 128, 196]

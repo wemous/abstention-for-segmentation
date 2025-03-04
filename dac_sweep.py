@@ -5,9 +5,10 @@ from torch.utils.data import DataLoader
 
 import wandb
 from datasets import CaDIS, NoisyCaDIS, DSAD, NoisyDSAD
-from models import UNet, DeepLabV3Plus, FPN
+from models import SegmentationModel
 
-pl.seed_everything(13)
+torch.use_deterministic_algorithms(mode=True, warn_only=True)
+pl.seed_everything(1, workers=True)
 torch.set_float32_matmul_precision("high")
 
 wandb.login()
@@ -23,7 +24,7 @@ def main():
     valid_dataset = CaDIS(split="valid", setup=1)
     test_dataset = CaDIS(split="test", setup=1)
     num_classes = test_dataset.num_classes[1]
-    batch_size = 142
+    batch_size = config.batch_size
 
     # train_dataset = NoisyDSAD(noise_level=3)
     # valid_dataset = DSAD(split="valid")
@@ -57,18 +58,24 @@ def main():
         "name": "DACLoss",
         "args": {
             "max_epochs": max_epochs,
+            "warmup_epochs": config.warmup_epochs,
             "alpha_final": config.alpha_final,
         },
     }
     optimizer_args = {
-        "lr": 0.05,
+        "lr": 0.1,
         "momentum": 0.9,
         "weight_decay": 5e-3,
     }
 
-    model = UNet(num_classes + 1, loss_config, **optimizer_args)
-    # model = DeepLabV3Plus(num_classes+1, loss_config)
-    # model = FPN(num_classes+1, loss_config)
+    model = SegmentationModel(
+        num_classes + 1,
+        loss_config,
+        model_name="UNet",
+        window_size=16,
+        include_background=True,
+        **optimizer_args,
+    )
 
     trainer = pl.Trainer(
         devices=1,
@@ -76,7 +83,7 @@ def main():
         enable_checkpointing=False,
         enable_model_summary=False,
         enable_progress_bar=True,
-        log_every_n_steps=len(train_loader) // 5,
+        log_every_n_steps=len(train_loader) // 3,
         logger=WandbLogger(id=run.id),
     )
 

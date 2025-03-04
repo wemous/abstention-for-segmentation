@@ -94,8 +94,8 @@ def transform(image: Tensor, mask: Tensor, tf: str) -> tuple[Tensor, Tensor]:
         image = normalize(image, mean, std)
     elif tf == "rotated":
         angle = random.uniform(-60, 60)
-        image = rotate(image, angle, fill=35)  # type: ignore
-        mask = rotate(mask, angle, fill=35)  # type: ignore
+        image = rotate(image, angle, fill=35)  
+        mask = rotate(mask, angle, fill=35)
     return image, mask
 
 
