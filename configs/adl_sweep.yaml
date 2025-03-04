@@ -1,0 +1,20 @@
+program: adl_sweep.py
+project: xdac
+name: adl alpha init
+method: bayes
+metric:
+  goal: maximize
+  name: test/mIoU
+parameters:
+  # warmup_epochs:
+  #   min: 11
+  #   max: 16
+  # alpha_final:
+  #   min: 2.5
+  #   max: 4.0
+  # lamda:
+  #   min: 1.0
+  #   max: 1.3
+  alpha_init:
+    min: 0.00001
+    max: 0.01
