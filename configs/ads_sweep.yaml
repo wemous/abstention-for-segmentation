@@ -1,0 +1,23 @@
+program: ads_sweep.py
+project: playground
+name: ads
+method: random
+metric:
+  goal: maximize
+  name: valid/mIoU
+parameters:
+  warmup_epochs:
+    min: 5
+    max: 20
+  alpha_final:
+    min: 1.0
+    max: 5.0
+  window_size:
+    # values: [8, 16, 32, 48, 64]
+    value: 16
+  lr:
+    # value: 0.003
+    values: [0.001, 0.003, 0.004, 0.005]
+  gamma:
+    max: 1.0
+    min: 0.01
