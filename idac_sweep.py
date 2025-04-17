@@ -4,10 +4,10 @@ from lightning.pytorch.loggers import WandbLogger
 from torch.utils.data import DataLoader
 
 import wandb
-from datasets import CaDIS, NoisyCaDIS, DSAD, NoisyDSAD
-from models import UNet, DeepLabV3Plus, FPN
+from datasets import DSAD, CaDIS, NoisyCaDIS, NoisyDSAD
+from models import SegmentationModel
 
-pl.seed_everything(13)
+pl.seed_everything(1, workers=True)
 torch.set_float32_matmul_precision("high")
 
 wandb.login()
@@ -16,19 +16,19 @@ wandb.login()
 def main():
     run = wandb.init()
     config = wandb.config
-    max_epochs = 30
 
-    train_dataset = NoisyCaDIS(noise_level=config.noise_level, setup=1)
+    max_epochs = 50
+    batch_size = 128
+
+    train_dataset = NoisyCaDIS(noise_level=5, setup=1)
     valid_dataset = CaDIS(split="valid", setup=1)
     test_dataset = CaDIS(split="test", setup=1)
     num_classes = test_dataset.num_classes[1]
-    batch_size = 128
 
     # train_dataset = NoisyDSAD(noise_level=3)
     # valid_dataset = DSAD(split="valid")
     # test_dataset = DSAD(split="test")
     # num_classes = 8
-    # batch_size = 64
 
     train_loader = DataLoader(
         train_dataset,
@@ -52,7 +52,6 @@ def main():
         num_workers=8,
     )
 
-    wandb.log({"noise rate": train_dataset.noise_rate})
     noise_rate = round(train_dataset.noise_rate, 2)
 
     loss_config = {
@@ -60,20 +59,20 @@ def main():
         "args": {
             "noise_rate": noise_rate,
             "max_epochs": max_epochs,
-            # "warmup_rate": config.warmup_rate,
-            "warmup_rate": 0.2,
-            "alpha": max(1, noise_rate * config.scale),
+            "warmup_epochs": config.warmup_epochs,
+            "alpha": config.alpha,
         },
     }
-    optimizer_args = {
-        "lr": 0.05,
-        "momentum": 0.9,
-        "weight_decay": 5e-3,
-    }
 
-    model = UNet(num_classes + 1, loss_config, **optimizer_args)
-    # model = DeepLabV3Plus(num_classes+1, loss_config)
-    # model = FPN(num_classes+1, loss_config)
+    lr = 3e-3
+
+    model = SegmentationModel(
+        num_classes + 1,
+        loss_config,
+        lr,
+        model_name="UNet",
+        include_background=True,
+    )
 
     trainer = pl.Trainer(
         devices=1,
@@ -81,12 +80,12 @@ def main():
         enable_checkpointing=False,
         enable_model_summary=False,
         enable_progress_bar=True,
-        log_every_n_steps=len(train_loader) // 5,
+        deterministic="warn",
+        log_every_n_steps=len(train_loader) // 3,
         logger=WandbLogger(id=run.id),
     )
 
     trainer.fit(model, train_loader, valid_loader)
-    trainer.test(model, test_loader)
     wandb.finish(quiet=True)
 
 

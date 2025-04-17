@@ -1,16 +1,16 @@
 program: dac_sweep.py
-project: xdac
+project: playground
 name: dac
 method: random
 metric:
   goal: maximize
-  name: test/mIoU
+  name: valid/mIoU
 parameters:
   warmup_epochs:
     min: 5
     max: 20
   alpha_final:
     min: 1.0
-    max: 3.0
-  batch_size:
-    values: [64, 128, 196]
+    max: 5.0
+  lr:
+    values: [0.001, 0.003, 0.004, 0.005]

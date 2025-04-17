@@ -4,10 +4,9 @@ from lightning.pytorch.loggers import WandbLogger
 from torch.utils.data import DataLoader
 
 import wandb
-from datasets import CaDIS, NoisyCaDIS, DSAD, NoisyDSAD
+from datasets import DSAD, CaDIS, NoisyCaDIS, NoisyDSAD
 from models import SegmentationModel
 
-torch.use_deterministic_algorithms(mode=True, warn_only=True)
 pl.seed_everything(1, workers=True)
 torch.set_float32_matmul_precision("high")
 
@@ -19,18 +18,14 @@ def main():
     config = wandb.config
 
     max_epochs = 50
+    batch_size = 128
+    num_classes = 8
 
     train_dataset = NoisyCaDIS(noise_level=5, setup=1)
     valid_dataset = CaDIS(split="valid", setup=1)
-    test_dataset = CaDIS(split="test", setup=1)
-    num_classes = test_dataset.num_classes[1]
-    batch_size = config.batch_size
 
     # train_dataset = NoisyDSAD(noise_level=3)
     # valid_dataset = DSAD(split="valid")
-    # test_dataset = DSAD(split="test")
-    # num_classes = 8
-    # batch_size = 50
 
     train_loader = DataLoader(
         train_dataset,
@@ -46,13 +41,6 @@ def main():
         drop_last=False,
         num_workers=8,
     )
-    test_loader = DataLoader(
-        test_dataset,
-        batch_size=batch_size,
-        shuffle=False,
-        drop_last=False,
-        num_workers=8,
-    )
 
     loss_config = {
         "name": "DACLoss",
@@ -62,19 +50,15 @@ def main():
             "alpha_final": config.alpha_final,
         },
     }
-    optimizer_args = {
-        "lr": 0.1,
-        "momentum": 0.9,
-        "weight_decay": 5e-3,
-    }
+
+    lr = config.lr
 
     model = SegmentationModel(
         num_classes + 1,
         loss_config,
+        lr,
         model_name="UNet",
-        window_size=16,
         include_background=True,
-        **optimizer_args,
     )
 
     trainer = pl.Trainer(
@@ -83,12 +67,12 @@ def main():
         enable_checkpointing=False,
         enable_model_summary=False,
         enable_progress_bar=True,
+        deterministic="warn",
         log_every_n_steps=len(train_loader) // 3,
         logger=WandbLogger(id=run.id),
     )
 
     trainer.fit(model, train_loader, valid_loader)
-    trainer.test(model, test_loader)
     wandb.finish(quiet=True)
 
 

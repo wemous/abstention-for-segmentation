@@ -1,19 +1,19 @@
 program: idac_sweep.py
-project: thesis
-# name: idac parameters-cadis-unet
-name: idac alpha noise-cadis-unet
-method: grid
+project: playground
+name: idac
+method: bayes
 metric:
   goal: maximize
-  name: test/mIoU
+  name: valid/mIoU
 parameters:
-  # warmup_rate:
-  #   min: 0.05
-  #   max: 0.3
-  # alpha:
-  #   min: 1
-  #   max: 20
-  scale:
-    values: [20, 30, 50, 70, 100, 150, 200]
-  noise_level:
-    values: [1, 2, 3, 4, 5]
+  warmup_epochs:
+    # values: [16, 17, 18]
+    min: 5
+    max: 20
+  alpha:
+    min: 1.0
+    max: 5.0
+  # scale:
+  #   values: [20, 30, 50, 70, 100, 150, 200]
+  # noise_level:
+  #   values: [1, 2, 3, 4, 5]

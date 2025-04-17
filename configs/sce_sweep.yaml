@@ -4,7 +4,7 @@ name: sce parameters noise-cadis-unet
 method: bayes
 metric:
   goal: maximize
-  name: test/mIoU
+  name: valid/mIoU
 parameters:
   alpha:
     min: 0.1

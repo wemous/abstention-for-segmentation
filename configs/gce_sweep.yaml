@@ -4,7 +4,7 @@ name: gce-cadis-unet
 method: grid
 metric:
   goal: maximize
-  name: test/mIoU
+  name: valid/mIoU
 parameters:
   q:
     # min: 0.01
