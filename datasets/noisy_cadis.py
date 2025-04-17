@@ -42,6 +42,8 @@ class NoisyCaDIS(Dataset):
             normalized=normalized,
             rotated=rotated,
         )
+        self.noise_level = noise_level
+        self.setup = setup
         self.num_classes = cadis.num_classes[setup]
         self.image_paths = cadis.image_paths
         self.noise_rate = 0
@@ -52,11 +54,11 @@ class NoisyCaDIS(Dataset):
             self.mask_paths = []
 
             noise_config = {
-                1: (torch.ones([2, 3]).cuda(), 0.04),
-                2: (torch.ones([5, 6]).cuda(), 0.01),
-                3: (torch.ones([8, 8]).cuda(), 0.13),
-                4: (torch.ones([9, 9]).cuda(), 0.46),
-                5: (torch.ones([9, 9]).cuda(), 0.89),
+                1: (torch.ones([4, 5]).cuda(), 0.02),
+                2: (torch.ones([8, 8]).cuda(), 0.13),
+                3: (torch.ones([9, 9]).cuda(), 0.46),
+                4: (torch.ones([9, 9]).cuda(), 0.89),
+                5: (torch.ones([13, 13]).cuda(), 1.0),
             }
 
             root_path = Path(
@@ -103,4 +105,6 @@ class NoisyCaDIS(Dataset):
     def __getitem__(self, index) -> tuple[Tensor, Tensor]:
         image = torch.load(self.image_paths[index], weights_only=True)
         mask = torch.load(self.mask_paths[index], weights_only=True)
+        if self.noise_level == 0:
+            mask = mask_to_setup(mask, self.setup)
         return image, mask
