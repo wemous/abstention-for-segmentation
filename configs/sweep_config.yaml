@@ -1,6 +1,7 @@
 program: sweep.py
 project: thesis
-name: main-cadis
+name: main-cadis-5
+# name: abstention post-optimization
 method: grid
 metric:
   goal: maximize
@@ -20,9 +21,12 @@ parameters:
       ]
   noise_level:
     values: [0, 1, 2, 3, 4, 5]
+    # values: [1, 5]
     # value: 5
   loss:
-    values: [ADLoss, DiceLoss, DACLoss, IDACLoss, CELoss, SCELoss, GCELoss]
+    # values: [ADSLoss, DiceLoss, DACLoss, IDACLoss, CELoss, SCELoss, GCELoss]
+    # values: [DiceLoss, CELoss]
+    values: [ADSLoss, DACLoss, IDACLoss, DiceLoss, CELoss]
   seed:
-    values: [-2, -1, 0, 1, 2]
+    values: [1, 2, 3, 4, 5]
     # value: 1

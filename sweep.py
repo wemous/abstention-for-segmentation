@@ -1,14 +1,17 @@
+import os
+from pathlib import Path
+
 import lightning as pl
 import torch
+from lightning.pytorch.callbacks import ModelCheckpoint
 from lightning.pytorch.loggers import WandbLogger
 from torch.utils.data import DataLoader
 
 import wandb
-from datasets import CaDIS, NoisyCaDIS, DSAD, NoisyDSAD
+from datasets import DSAD, CaDIS, NoisyCaDIS, NoisyDSAD
 from models import SegmentationModel
 
 torch.set_float32_matmul_precision("high")
-torch.use_deterministic_algorithms(True, warn_only=True)
 wandb.login()
 
 
@@ -17,7 +20,7 @@ def main():
     config = run.config
     pl.seed_everything(config.seed, workers=True)
 
-    max_epochs = 100
+    max_epochs = 50
     noise_level = config.noise_level
     dataset_name = config.dataset["name"]
     augmentations = config.dataset["augmentations"]
@@ -58,7 +61,7 @@ def main():
     )
 
     noise_rate = round(train_dataset.noise_rate, 2)
-    class_noise = train_dataset.class_noise
+    wandb.log({"noise rate": noise_rate})
 
     if "DAC" in config.loss:
         num_classes += 1
@@ -68,40 +71,66 @@ def main():
         "args": {
             "noise_rate": noise_rate,
             "max_epochs": max_epochs,
-            "warmup_epochs": 20,
-            "class_noise": class_noise,
         },
     }
 
-    optimizer_args = {
-        "lr": 0.1,
-        "momentum": 0.9,
-        "weight_decay": 5e-3,
-    }
+    lr = 3e-3
 
     model = SegmentationModel(
         num_classes,
         loss_config,
+        lr,
         model_name=config.model,
         window_size=16,
         include_background=True,
-        **optimizer_args,
     )
 
-    wandb.log({"noise rate": noise_rate})
+    checkpoint_callback = ModelCheckpoint(
+        monitor="valid/mIoU",
+        mode="max",
+        save_top_k=1,
+        filename="{epoch}",
+    )
 
     trainer = pl.Trainer(
         devices=1,
         max_epochs=max_epochs,
-        enable_checkpointing=False,
+        callbacks=[checkpoint_callback],
         enable_model_summary=False,
         enable_progress_bar=True,
+        deterministic="warn",
         log_every_n_steps=len(train_loader) // 3,
         logger=WandbLogger(id=run.id),
     )
 
     trainer.fit(model, train_loader, valid_loader)
-    trainer.test(model, test_loader)
+    trainer.logger = None
+    checkpoint_path = checkpoint_callback.best_model_path
+    checkpoint = SegmentationModel.load_from_checkpoint(
+        checkpoint_path,
+        num_classes=num_classes,
+    )
+    wandb.log({"best epoch": int(Path(checkpoint_path).stem[6:])})
+    #
+    final_metrics = trainer.test(model, test_loader)[0]
+    wandb.log(
+        {
+            "test/accuracy_final": final_metrics["test/accuracy"],
+            "test/dice_final": final_metrics["test/dice"],
+            "test/miou_final": final_metrics["test/miou"],
+        }
+    )
+
+    best_metrics = trainer.test(checkpoint, test_loader)[0]
+    wandb.log(
+        {
+            "test/accuracy_best": best_metrics["test/accuracy"],
+            "test/dice_best": best_metrics["test/dice"],
+            "test/miou_best": best_metrics["test/miou"],
+        }
+    )
+    os.remove(checkpoint_path)
+
     wandb.finish(quiet=True)
 
 
