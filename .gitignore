@@ -5,3 +5,5 @@ datasets/__pycache__/
 wandb/
 unifiedparsing/
 lightning_logs/
+todo.txt
+thesis/

@@ -2,7 +2,6 @@ import random
 from pathlib import Path
 
 import torch
-import torch.nn.functional as F
 from kornia.morphology import dilation, erosion
 from torch import Tensor
 from torch.utils.data import Dataset
@@ -21,40 +20,25 @@ def flip_label(mask: torch.Tensor):
 
 
 class NoisyDSAD(Dataset):
-    def __init__(
-        self,
-        noise_level: int,
-        flipped=False,
-        gaussian=False,
-        jitter=False,
-        normalized=False,
-        rotated=False,
-    ):
+    def __init__(self, noise_level: int):
         super().__init__()
         assert noise_level > -1 and noise_level < 6
 
-        dsad = DSAD(
-            split="train",
-            flipped=flipped,
-            gaussian=gaussian,
-            jitter=jitter,
-            normalized=normalized,
-            rotated=rotated,
-        )
-
+        dsad = DSAD(split="train")
         self.num_classes = 8
         self.image_paths = dsad.image_paths
-        self.noise_rate = 0
 
         if noise_level == 0:
             self.mask_paths = dsad.mask_paths
+            self.noise_rate = torch.tensor(0.0).cuda()
+            self.class_noise = torch.zeros(self.num_classes).float().cuda()
         else:
             self.mask_paths = []
             noise_config = {
-                1: (torch.ones([8, 8]).cuda(), 0.0),
-                2: (torch.ones([9, 9]).cuda(), 0.55),
-                3: (torch.ones([11, 11]).cuda(), 0.85),
-                4: (torch.ones([18, 18]).cuda(), 1.0),
+                1: (torch.ones([7, 7]).cuda(), 0.06),
+                2: (torch.ones([9, 9]).cuda(), 0.53),
+                3: (torch.ones([13, 13]).cuda(), 0.8),
+                4: (torch.ones([19, 19]).cuda(), 0.95),
                 5: (torch.ones([29, 29]).cuda(), 1.0),
             }
 
@@ -64,27 +48,36 @@ class NoisyDSAD(Dataset):
                 morph = [dilation] * (len(dsad) // 2) + [erosion] * (len(dsad) // 2)
                 random.shuffle(morph)
 
+                pixel_count = torch.zeros(self.num_classes, dtype=torch.long).cuda()
+                noise_count = torch.zeros(self.num_classes, dtype=torch.long).cuda()
+                noise_rate = 0
+
                 for i, p in tqdm(enumerate(dsad.mask_paths), total=len(dsad)):
                     mask = torch.load(p, weights_only=True).cuda()
                     noisy_mask = mask.clone()
                     kernel, flip_rate = noise_config[noise_level]
-                    noisy_mask = morph[i](noisy_mask.unsqueeze(0), kernel)
-                    if i % 1000 < 1000 * flip_rate:
+                    noisy_mask = morph[i](noisy_mask.unsqueeze(0), kernel)[0]
+                    if i < len(dsad) * flip_rate:
                         noisy_mask = flip_label(noisy_mask)
-                    self.noise_rate += (mask != noisy_mask).float().mean()
+                    noise_rate += (mask != noisy_mask).float().mean()
+                    for j in range(self.num_classes):
+                        noise_count[j] += ((noisy_mask == j) > (mask == j)).sum()
+                        pixel_count[j] += (noisy_mask == j).sum()
 
-                    noisy_mask_path = Path(str(p).replace("transformed", f"noisy/{noise_level}"))
+                    noisy_mask_path = Path(
+                        str(p).replace("transformed/train", f"noisy/{noise_level}")
+                    )
                     noisy_mask_path.parent.mkdir(parents=True, exist_ok=True)
                     torch.save(noisy_mask.cpu(), noisy_mask_path)
 
-                torch.save(self.noise_rate / len(dsad), root_path.joinpath("noise_rate.pt"))
+                torch.save(noise_rate / len(dsad), root_path.joinpath("noise_rate.pt"))
+                torch.save(noise_count / pixel_count, root_path.joinpath("class_noise.pt"))
 
             self.mask_paths = [
-                str(p).replace("transformed", f"noisy/{noise_level}") for p in dsad.mask_paths
+                str(p).replace("transformed/train", f"noisy/{noise_level}") for p in dsad.mask_paths
             ]
-            self.noise_rate = torch.load(
-                root_path.joinpath("noise_rate.pt"), weights_only=True
-            ).item()
+            self.noise_rate = torch.load(root_path.joinpath("noise_rate.pt"), weights_only=True)
+            self.class_noise = torch.load(root_path.joinpath("class_noise.pt"), weights_only=True)
 
     def __len__(self):
         return len(self.image_paths)

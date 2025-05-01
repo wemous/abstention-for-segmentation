@@ -1,4 +1,3 @@
-import random
 from os import makedirs
 from pathlib import Path
 
@@ -6,15 +5,12 @@ import torch
 from PIL import Image
 from torch import Tensor
 from torch.utils.data import Dataset
-from torchvision.transforms.v2 import ColorJitter
 from torchvision.transforms.v2.functional import (
-    gaussian_noise,
     normalize,
     pil_to_tensor,
-    resize,
-    rotate,
+    resize_image,
+    resize_mask,
     to_dtype,
-    vertical_flip,
 )
 from tqdm import tqdm
 
@@ -46,49 +42,31 @@ video_splits = {
 mean = [0.4944, 0.2892, 0.2332]
 std = [0.2423, 0.1864, 0.1665]
 
-tf_jitter = ColorJitter(brightness=0.3, contrast=0.3, saturation=0.3, hue=0.3).cuda()
-
 
 def to_tensor(path, dtype=torch.float) -> Tensor:
-    return to_dtype(pil_to_tensor(Image.open(path)), dtype=dtype, scale=True)
+    return to_dtype(pil_to_tensor(Image.open(path)), dtype=dtype, scale=True).cuda()
 
 
 def build_image_and_mask(video_path, index) -> tuple[Tensor, Tensor]:
     image_path = Path(video_path).joinpath(f"image{index}.png")
     image = to_tensor(image_path)
-    image = resize(image, [384, 480])
+    image = resize_image(image, [384, 480])
+    image = normalize(image, mean=mean, std=std)
 
     mask_paths = sorted([*Path(video_path).glob(f"mask{index}*")])
     organ_masks = torch.stack([to_tensor(p, dtype=torch.long) for p in mask_paths])
-    organ_masks = resize(organ_masks, [384, 480])
+    organ_masks = resize_mask(organ_masks, [384, 480])
     background = 1 - organ_masks.max(0)[0].unsqueeze(0)
     mask = torch.concat([background, organ_masks]).argmax(0)
 
     return image, mask
 
 
-def transform(image: Tensor, mask: Tensor, tf: str) -> tuple[Tensor, Tensor]:
-    if tf == "flipped":
-        image = vertical_flip(image)
-        mask = vertical_flip(mask)
-    elif tf == "gaussian":
-        image = gaussian_noise(image)
-    elif tf == "jitter":
-        image = tf_jitter(image)
-    elif tf == "normalized":
-        image = normalize(image, mean, std)
-    elif tf == "rotated":
-        angle = random.uniform(-60, 60)
-        image = rotate(image, angle)
-        mask = rotate(mask, angle)
-    return image, mask
-
-
-def build_dataset(split: str, tf: str = ""):
+def build_dataset(split: str):
     image_paths, mask_paths = [], []
-    split_path = root_path.joinpath(f"transformed/{tf if tf else split}")
+    split_path = root_path.joinpath(f"transformed/{split}")
     if not split_path.exists():
-        print(f"Building {tf if tf else split} images and masks")
+        print(f"Building {split} images and masks")
         length = 142 if split == "valid" else 288 if split == "test" else 1000
         p_bar = tqdm(total=length, desc="images")
         for v in video_splits[split]:
@@ -98,8 +76,6 @@ def build_dataset(split: str, tf: str = ""):
             for image_path in [*source.glob("image*")]:
                 index = image_path.stem[-2:]
                 image, mask = build_image_and_mask(source, index)
-                if tf:
-                    image, mask = transform(image.cuda(), mask.cuda(), tf)
                 torch.save(image.cpu(), destination.joinpath(f"image{index}.pt"))
                 torch.save(mask.cpu(), destination.joinpath(f"mask{index}.pt"))
                 p_bar.update()
@@ -111,36 +87,9 @@ def build_dataset(split: str, tf: str = ""):
 
 
 class DSAD(Dataset):
-    def __init__(
-        self,
-        split: str = "train",
-        flipped=False,
-        gaussian=False,
-        jitter=False,
-        normalized=False,
-        rotated=False,
-    ):
+    def __init__(self, split: str = "train"):
         super().__init__()
-        self.image_paths, self.mask_paths = [], []
-        transforms = {
-            "flipped": flipped,
-            "gaussian": gaussian,
-            "jitter": jitter,
-            "normalized": normalized,
-            "rotated": rotated,
-        }
-
-        if split == "train":
-            images, masks = build_dataset(split="train")
-            self.image_paths.extend(images)
-            self.mask_paths.extend(masks)
-            for k, v in transforms.items():
-                if v:
-                    images, masks = build_dataset(split="train", tf=k)
-                    self.image_paths.extend(images)
-                    self.mask_paths.extend(masks)
-        else:
-            self.image_paths, self.mask_paths = build_dataset(split)
+        self.image_paths, self.mask_paths = build_dataset(split)
         assert len(self.image_paths) == len(self.mask_paths)
 
     def __len__(self):

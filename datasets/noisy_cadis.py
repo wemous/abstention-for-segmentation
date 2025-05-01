@@ -19,85 +19,70 @@ def flip_label(mask: torch.Tensor, num_classes: int):
 
 
 class NoisyCaDIS(Dataset):
-    def __init__(
-        self,
-        noise_level: int,
-        setup: int = 1,
-        flipped=False,
-        gaussian=False,
-        jitter=False,
-        normalized=False,
-        rotated=False,
-    ):
+    def __init__(self, noise_level: int, setup: int = 1):
         super().__init__()
         assert noise_level > -1 and noise_level < 6
         assert setup > 0 and setup < 4
 
-        cadis = CaDIS(
-            split="train",
-            setup=setup,
-            flipped=flipped,
-            gaussian=gaussian,
-            jitter=jitter,
-            normalized=normalized,
-            rotated=rotated,
-        )
+        cadis = CaDIS(split="train", setup=setup)
         self.noise_level = noise_level
         self.setup = setup
         self.num_classes = cadis.num_classes[setup]
         self.image_paths = cadis.image_paths
-        self.noise_rate = 0
 
         if noise_level == 0:
             self.mask_paths = cadis.mask_paths
+            self.noise_rate = torch.tensor(0.0).cuda()
+            self.class_noise = torch.zeros(self.num_classes).float().cuda()
         else:
             self.mask_paths = []
 
             noise_config = {
-                1: (torch.ones([4, 5]).cuda(), 0.02),
-                2: (torch.ones([8, 8]).cuda(), 0.13),
+                1: (torch.ones([5, 5]).cuda(), 0.05),
+                2: (torch.ones([9, 9]).cuda(), 0.1),
                 3: (torch.ones([9, 9]).cuda(), 0.46),
-                4: (torch.ones([9, 9]).cuda(), 0.89),
-                5: (torch.ones([13, 13]).cuda(), 1.0),
+                4: (torch.ones([11, 11]).cuda(), 0.67),
+                5: (torch.ones([13, 13]).cuda(), 0.95),
             }
 
-            root_path = Path(
-                f"/data/wesam/datasets/CaDIS/noisy/setup_{setup}/{noise_level}"
-            )
+            root_path = Path(f"/data/wesam/datasets/CaDIS/noisy/setup_{setup}/{noise_level}")
             if not root_path.exists():
                 print(f"Building noisy labels at noise level {noise_level}")
                 morph = [dilation] * (len(cadis) // 2) + [erosion] * (len(cadis) // 2)
                 random.shuffle(morph)
+
+                pixel_count = torch.zeros(self.num_classes, dtype=torch.long).cuda()
+                noise_count = torch.zeros(self.num_classes, dtype=torch.long).cuda()
+                noise_rate = 0
 
                 for i, p in tqdm(enumerate(cadis.mask_paths), total=len(cadis)):
                     mask = torch.load(p, weights_only=True).cuda()
                     mask = mask_to_setup(mask, setup)
                     noisy_mask = mask.clone()
                     kernel, flip_rate = noise_config[noise_level]
-                    if i % 3550 < 3550 * flip_rate:
+                    if i < len(cadis) * flip_rate:
                         noisy_mask = flip_label(noisy_mask, cadis.num_classes[setup])
-                    noisy_mask = morph[i](noisy_mask.unsqueeze(0), kernel)
-                    self.noise_rate += (mask != noisy_mask).float().mean()
+                    noisy_mask = morph[i](noisy_mask.unsqueeze(0), kernel)[0]
+                    noise_rate += (mask != noisy_mask).float().mean()
+                    for j in range(self.num_classes):
+                        noise_count[j] += ((noisy_mask == j) > (mask == j)).sum()
+                        pixel_count[j] += (noisy_mask == j).sum()
 
                     noisy_mask_path = Path(
-                        str(p).replace(
-                            "transformed", f"noisy/setup_{setup}/{noise_level}"
-                        )
+                        str(p).replace("transformed/train", f"noisy/setup_{setup}/{noise_level}")
                     )
                     noisy_mask_path.parent.mkdir(parents=True, exist_ok=True)
                     torch.save(noisy_mask.cpu(), noisy_mask_path)
 
-                torch.save(
-                    self.noise_rate / len(cadis), root_path.joinpath("noise_rate.pt")
-                )
+                torch.save(noise_rate / len(cadis), root_path.joinpath("noise_rate.pt"))
+                torch.save(noise_count / pixel_count, root_path.joinpath("class_noise.pt"))
 
             self.mask_paths = [
-                str(p).replace("transformed", f"noisy/setup_{setup}/{noise_level}")
+                str(p).replace("transformed/train", f"noisy/setup_{setup}/{noise_level}")
                 for p in cadis.mask_paths
             ]
-            self.noise_rate = torch.load(
-                root_path.joinpath("noise_rate.pt"), weights_only=True
-            ).item()
+            self.noise_rate = torch.load(root_path.joinpath("noise_rate.pt"), weights_only=True)
+            self.class_noise = torch.load(root_path.joinpath("class_noise.pt"), weights_only=True)
 
     def __len__(self):
         return len(self.image_paths)

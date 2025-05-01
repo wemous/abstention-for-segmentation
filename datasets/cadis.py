@@ -1,20 +1,16 @@
 from os import makedirs
 from pathlib import Path
-import random
 
 import torch
 from PIL import Image
 from torch import Tensor
 from torch.utils.data import Dataset
-from torchvision.transforms.v2 import ColorJitter
 from torchvision.transforms.v2.functional import (
-    gaussian_noise,
     normalize,
     pil_to_tensor,
-    resize,
-    rotate,
+    resize_image,
+    resize_mask,
     to_dtype,
-    vertical_flip,
 )
 from tqdm import tqdm
 
@@ -49,8 +45,6 @@ video_splits = {
 mean = [0.5737, 0.3461, 0.1954]
 std = [0.1593, 0.1558, 0.1049]
 
-tf_jitter = ColorJitter(brightness=0.3, contrast=0.3, saturation=0.3, hue=0.3).cuda()
-
 setup_2_class_map = {
     7: [8, 10, 20, 27, 32],
     8: [9, 22],
@@ -69,41 +63,27 @@ setup_2_class_map = {
 def mask_to_setup(mask: Tensor, setup: int) -> Tensor:
     if setup == 1:
         mask[mask > 7] = 7
+        mask = (mask + 1) % 8
     if setup == 2:
         for k, values in setup_2_class_map.items():
             for v in values:
                 mask[mask == v] = k
+        mask = (mask + 1) % 18
     if setup == 3:
         mask[mask > 25] = 25
+        mask = (mask + 1) % 26
     return mask
 
 
 def to_tensor(path, dtype=torch.float, scale=False) -> Tensor:
-    return to_dtype(pil_to_tensor(Image.open(path)), dtype=dtype, scale=scale)
+    return to_dtype(pil_to_tensor(Image.open(path)), dtype=dtype, scale=scale).cuda()
 
 
-def transform(image: Tensor, mask: Tensor, tf: str) -> tuple[Tensor, Tensor]:
-    if tf == "flipped":
-        image = vertical_flip(image)
-        mask = vertical_flip(mask)
-    elif tf == "gaussian":
-        image = gaussian_noise(image)
-    elif tf == "jitter":
-        image = tf_jitter(image)
-    elif tf == "normalized":
-        image = normalize(image, mean, std)
-    elif tf == "rotated":
-        angle = random.uniform(-60, 60)
-        image = rotate(image, angle, fill=35)  
-        mask = rotate(mask, angle, fill=35)
-    return image, mask
-
-
-def build_dataset(split: str, tf: str = ""):
+def build_dataset(split: str):
     image_paths, mask_paths = [], []
-    split_path = root_path.joinpath(f"transformed/{tf if tf else split}")
+    split_path = root_path.joinpath(f"transformed/{split}")
     if not split_path.exists():
-        print(f"Building {tf if tf else split} images and masks")
+        print(f"Building {split} images and masks")
         length = 534 if split == "valid" else 586 if split == "test" else 3550
         p_bar = tqdm(total=length, desc="images")
         for v in video_splits[split]:
@@ -115,11 +95,10 @@ def build_dataset(split: str, tf: str = ""):
             masks = sorted([*source.joinpath("Labels").iterdir()])
             for i_path, m_path in zip(images, masks):
                 image = to_tensor(i_path, scale=True)
-                image = resize(image, [256, 480])
+                image = resize_image(image, [256, 480])
+                image = normalize(image, mean=mean, std=std)
                 mask = to_tensor(m_path, dtype=torch.long)
-                mask = resize(mask, [256, 480])
-                if tf:
-                    image, mask = transform(image.cuda(), mask.cuda(), tf)
+                mask = resize_mask(mask, [256, 480])
                 torch.save(image.cpu(), destination.joinpath(f"Images/{i_path.stem}.pt"))
                 torch.save(mask.cpu(), destination.joinpath(f"Labels/{m_path.stem}.pt"))
                 p_bar.update()
@@ -133,40 +112,12 @@ def build_dataset(split: str, tf: str = ""):
 
 
 class CaDIS(Dataset):
-    def __init__(
-        self,
-        split: str = "train",
-        setup: int = 1,
-        flipped=False,
-        gaussian=False,
-        jitter=False,
-        normalized=False,
-        rotated=False,
-    ):
+    def __init__(self, split: str = "train", setup: int = 1):
         super().__init__()
         assert setup >= 1 and setup <= 3
         self.setup = setup
         self.num_classes = {1: 8, 2: 18, 3: 26}
-        self.image_paths, self.mask_paths = [], []
-        transforms = {
-            "flipped": flipped,
-            "gaussian": gaussian,
-            "jitter": jitter,
-            "normalized": normalized,
-            "rotated": rotated,
-        }
-
-        if split == "train":
-            images, masks = build_dataset(split="train")
-            self.image_paths.extend(images)
-            self.mask_paths.extend(masks)
-            for k, v in transforms.items():
-                if v:
-                    images, masks = build_dataset(split="train", tf=k)
-                    self.image_paths.extend(images)
-                    self.mask_paths.extend(masks)
-        else:
-            self.image_paths, self.mask_paths = build_dataset(split)
+        self.image_paths, self.mask_paths = build_dataset(split)
         assert len(self.image_paths) == len(self.mask_paths)
 
     def __len__(self):
