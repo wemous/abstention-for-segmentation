@@ -1,8 +1,8 @@
 import torch.nn.functional as F
 from lightning import LightningModule
 from torch import Tensor, nn
-from torch.optim.lr_scheduler import MultiplicativeLR
 from torch.optim.adamw import AdamW
+from torch.optim.lr_scheduler import MultiplicativeLR
 from torchmetrics.functional.segmentation import dice_score, mean_iou
 
 import losses
@@ -14,18 +14,17 @@ class SegmentationModel(LightningModule):
         self,
         num_classes: int,
         loss: dict,
-        lr=0.003,
+        lr: float = 0.003,
         model_name: str = "UNet",
-        window_size=16,
-        include_background=True,
+        window_size: int = 16,
+        include_background: bool = True,
     ):
         super().__init__()
-        self.model = getattr(models, model_name)(num_classes).to(self.device)
-        self.loss_name = loss["name"]
-
         self.num_classes = num_classes
+        self.loss_name = loss["name"]
         if "DAC" in self.loss_name:
-            self.num_classes -= 1
+            num_classes += 1
+        self.model = getattr(models, model_name)(num_classes).to(self.device)
 
         if "ADS" in self.loss_name:
             self.segmentation_head = self.model.net.segmentation_head
@@ -83,25 +82,10 @@ class SegmentationModel(LightningModule):
         loss = self.loss_function(preds, targets)
         self.log("valid/loss", loss, prog_bar=True, on_epoch=True)
         if "DAC" in self.loss_name:
-            preds = preds[:, :-1, :, :]
+            preds = preds[:, :-1]
 
         preds = preds.argmax(1).detach()
-        accuracy = (preds == targets).float().mean()
-        preds = F.one_hot(preds, self.num_classes).movedim(-1, 1)
-        targets = F.one_hot(targets, self.num_classes).movedim(-1, 1)
-        dice = dice_score(
-            preds,
-            targets,
-            num_classes=self.num_classes,
-            include_background=self.include_background,
-            average="none",
-        ).mean()
-        miou = mean_iou(
-            preds,
-            targets,
-            num_classes=self.num_classes,
-            include_background=self.include_background,
-        ).mean()
+        accuracy, dice, miou = self.calculate_metrics(preds, targets)
         self.log("valid/accuracy", accuracy, on_epoch=True, prog_bar=True)
         self.log("valid/dice", dice, on_epoch=True, prog_bar=True)
         self.log("valid/miou", miou, on_epoch=True, prog_bar=True)
@@ -112,10 +96,19 @@ class SegmentationModel(LightningModule):
         targets = batch[1].to(self.device).squeeze().long()
         preds = self.forward(images)
         if "DAC" in self.loss_name:
-            preds = preds[:, :-1, :, :]
+            preds = preds[:, :-1]
 
         preds = preds.argmax(1).detach()
-        accuracy = (preds == targets).float().mean().cpu().item()
+        accuracy, dice, miou = self.calculate_metrics(preds, targets)
+        self.log("test/accuracy", accuracy, on_epoch=True)
+        self.log("test/dice", dice, on_epoch=True)
+        self.log("test/miou", miou, on_epoch=True)
+
+    def calculate_metrics(self, preds, targets):
+        if self.include_background:
+            accuracy = (preds == targets).float().mean()
+        else:
+            accuracy = (preds == targets)[:, 1:].float().mean()
         preds = F.one_hot(preds, self.num_classes).movedim(-1, 1)
         targets = F.one_hot(targets, self.num_classes).movedim(-1, 1)
         dice = dice_score(
@@ -133,9 +126,8 @@ class SegmentationModel(LightningModule):
             include_background=self.include_background,
         )
         miou = miou.mean().cpu().item()
-        self.log("test/accuracy", accuracy, on_epoch=True)
-        self.log("test/dice", dice, on_epoch=True)
-        self.log("test/miou", miou, on_epoch=True)
+
+        return accuracy, dice, miou
 
     def configure_optimizers(self):
         optimizer = AdamW(self.parameters(), lr=self.lr)

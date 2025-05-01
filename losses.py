@@ -2,16 +2,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from torch import Tensor
-
-nn.CrossEntropyLoss()
-
-
-class CELoss(nn.Module):
-    def __init__(self, **kwargs):
-        super().__init__()
-
-    def forward(self, preds: Tensor, targets: Tensor) -> Tensor:
-        return F.cross_entropy(preds, targets)
+from torch.nn import CrossEntropyLoss as CELoss
 
 
 class GCELoss(nn.Module):
@@ -31,14 +22,15 @@ class GCELoss(nn.Module):
 class SCELoss(nn.Module):
     """Symmetric Cross Entropy Loss"""
 
-    def __init__(self, noise_rate: float, alpha=None, A=-4, **kwargs):
+    def __init__(self, noise_rate: float, alpha=None, A=-4, ignore_index=-100, **kwargs):
         super().__init__()
         self.alpha = alpha if alpha else 1 - noise_rate
         self.A = A
+        self.ce = CELoss()
 
     def forward(self, preds: Tensor, targets: Tensor):
         # CCE
-        ce = F.cross_entropy(preds, targets)
+        ce = self.ce(preds, targets)
 
         # RCE
         preds = F.softmax(preds, dim=1)
@@ -60,6 +52,7 @@ class DACLoss(nn.Module):
         alpha_final=1.0,
         mu=0.05,
         rho=64,
+        ignore_index=-100,
         **kwargs,
     ):
         super().__init__()
@@ -71,6 +64,7 @@ class DACLoss(nn.Module):
         self.mu = mu
         self.rho = rho
         self.epsilon = 1e-7
+        self.ce = CELoss()
 
         # values that will be updated
         self.alpha = None
@@ -85,7 +79,7 @@ class DACLoss(nn.Module):
         training: bool = False,
         epoch: int = 0,
     ):
-        ce_loss = F.cross_entropy(preds[:, :-1, :, :], targets)
+        ce_loss = self.ce(preds[:, :-1, :, :], targets)
 
         if not training:
             return ce_loss
@@ -111,7 +105,7 @@ class DACLoss(nn.Module):
                 if not self.alpha:
                     self.alpha = self.alpha_thershold_smoothed / self.rho
                     self.alpha_step = (self.alpha_final - self.alpha) / (
-                        self.max_epochs - self.warmup_epochs
+                        self.max_epochs - self.warmup_epochs - 1
                     )
                     self.alpha_update_epoch = epoch
                 else:
@@ -135,15 +129,17 @@ class IDACLoss(nn.Module):
 
     def __init__(
         self,
-        noise_rate: float,
+        noise_rate: Tensor,
         warmup_epochs: int = 10,
         alpha=1.0,
+        ignore_index=-100,
         **kwargs,
     ):
         super().__init__()
         self.noise_rate = noise_rate
         self.warmup_epochs = warmup_epochs
         self.alpha = alpha
+        self.ce = CELoss()
 
     def forward(
         self,
@@ -152,7 +148,7 @@ class IDACLoss(nn.Module):
         training: bool = False,
         epoch: int = 0,
     ):
-        ce_loss = F.cross_entropy(preds[:, :-1, :, :], targets)
+        ce_loss = self.ce(preds[:, :-1, :, :], targets)
 
         if not training:
             return ce_loss
@@ -186,8 +182,6 @@ class DiceLoss(nn.Module):
         self,
         preds: Tensor,
         targets: Tensor,
-        abstention=0,
-        gamma=1.0,
     ) -> Tensor:
         dims = (-1, -2)
         preds = preds.log_softmax(dim=1).exp()
@@ -196,7 +190,6 @@ class DiceLoss(nn.Module):
         sum_preds = preds.sum(dims)
         sum_targets = targets.sum(dims)
         scores = 2 * instersection / (sum_preds + sum_targets)
-        scores = (scores / (1 - abstention * gamma)).clamp_max(1)
         loss = 1 - scores
         if self.reduction == "mean":
             loss = loss.mean()
@@ -213,74 +206,62 @@ class ADSLoss(nn.Module):
     def __init__(
         self,
         max_epochs: int,
-        warmup_epochs: int = 20,
-        alpha_final=1.0,
-        gamma=1.0,
-        mu=0.05,
-        rho=64,
+        noise_rate: Tensor = 0,
+        class_noise: Tensor = None,
+        alpha_final: float = 1.0,
+        gamma: float = 1.0,
+        warmup_epochs: int = 10,
         **kwargs,
     ):
         super().__init__()
-
-        # fixed values
         self.max_epochs = max_epochs
-        self.warmup_epochs = warmup_epochs
+        self.noise_rate = noise_rate
+        self.class_noise = class_noise if class_noise is not None else noise_rate
         self.alpha_final = alpha_final
         self.gamma = gamma
-        self.mu = mu
-        self.rho = rho
+        self.warmup_epochs = warmup_epochs
         self.dice = DiceLoss(reduction="none")
-
-        # values that will be updated
-        self.alpha = None
-        self.alpha_step = None
         self.alpha_update_epoch = 0
-        self.alpha_thershold_smoothed = None
 
     def forward(
         self,
         preds: Tensor,
         targets: Tensor,
-        abstention=None,
+        abstention: Tensor = None,
         epoch: int = 0,
     ):
-        dice_loss = self.dice(preds, targets).mean()
+        dice_loss = self.dice(preds, targets)
 
         if abstention is None:
-            return dice_loss
+            return dice_loss.mean()
         else:
-            abstention = F.logsigmoid(abstention).exp()
-            abstention = abstention.clamp_max(1 - 1e-7)
-            regularization = 0
-
             if epoch < self.warmup_epochs:
-                alpha_threshold = ((1 - abstention.mean()) * dice_loss).item()
-                if not self.alpha_thershold_smoothed:
-                    self.alpha_thershold_smoothed = alpha_threshold
-                else:
-                    self.alpha_thershold_smoothed = (
-                        1 - self.mu
-                    ) * self.alpha_thershold_smoothed + self.mu * alpha_threshold
+                abstention *= 0
+                regularization = abstention
                 loss = dice_loss
             else:
-                if not self.alpha:
-                    self.alpha = self.alpha_thershold_smoothed / self.rho
-                    self.alpha_step = (self.alpha_final - self.alpha) / (
-                        self.max_epochs - self.warmup_epochs
+                if epoch > self.alpha_update_epoch:
+                    self.alpha = (
+                        self.alpha_final
+                        * (
+                            (epoch - self.warmup_epochs + 1)
+                            / (self.max_epochs - self.warmup_epochs)
+                        )
+                        ** self.gamma
                     )
                     self.alpha_update_epoch = epoch
-                else:
-                    if epoch > self.alpha_update_epoch:
-                        self.alpha += self.alpha_step
-                        self.alpha_update_epoch = epoch
-                dice_loss = self.dice(preds, targets, abstention, self.gamma)
-                regularization = -self.alpha * torch.log(1 - abstention)
+                abstention = F.logsigmoid(abstention).exp()
+                abstention = abstention.clamp_max(1 - 1e-7)
+                num = 1 - abstention + (self.class_noise - abstention) ** 2
+                regularization = self.alpha * torch.log(num / (1 - abstention))
                 loss = (1 - abstention) * dice_loss + regularization
-                regularization = regularization.mean()
+            abstention = abstention.mean(0)
+            class_abstention = {f"Class {i} Abstention": p for i, p in enumerate(abstention)}
             output = {
                 "loss": loss.mean(),
                 "Dice loss": dice_loss.mean(),
-                "Regularization": regularization,
+                "Regularization": regularization.mean(),
                 "Abstention": abstention.mean(),
+                **class_abstention,
             }
             return output
