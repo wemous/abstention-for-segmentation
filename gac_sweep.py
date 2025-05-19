@@ -18,15 +18,15 @@ def main():
     run = wandb.init()
     config = wandb.config
 
-    max_epochs = 50
     num_classes = 8
+    max_epochs = 50
 
-    train_dataset = NoisyCaDIS(noise_level=3, setup=1)
+    train_dataset = NoisyCaDIS(noise_level=config.noise_level, setup=1)
     valid_dataset = CaDIS(split="valid", setup=1)
-    test_dataset = CaDIS(split="test", setup=1)
+    test_dataset = CaDIS(split="test")
     batch_size = 128
 
-    # train_dataset = NoisyDSAD(noise_level=config.noise_level)
+    # train_dataset = NoisyDSAD(noise_level=5)
     # valid_dataset = DSAD(split="valid")
     # test_dataset = DSAD(split="test")
     # batch_size = 50
@@ -53,12 +53,17 @@ def main():
         num_workers=8,
     )
 
+    noise_rate = train_dataset.noise_rate.round(decimals=2)
+
     loss_config = {
-        "name": "DACLoss",
+        "name": "GACLoss",
         "args": {
             "max_epochs": max_epochs,
-            "warmup_epochs": config.warmup_epochs,
+            "noise_rate": noise_rate,
             "alpha_final": config.alpha_final,
+            "gamma": config.gamma,
+            "warmup_epochs": config.warmup_epochs,
+            "q": config.q,
         },
     }
 
@@ -94,7 +99,6 @@ def main():
             "test/miou_final": final_metrics["test/miou"],
         }
     )
-    wandb.finish()
     wandb.finish()
 
 

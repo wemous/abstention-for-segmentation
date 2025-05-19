@@ -1,0 +1,29 @@
+program: gac_sweep.py
+project: playground
+name: gac
+# method: bayes
+method: grid
+metric:
+  goal: maximize
+  name: test/miou_final
+parameters:
+  warmup_epochs:
+    # min: 5
+    # max: 25
+    # values: [10, 12, 15, 18, 20]
+    value: 10
+  alpha_final:
+    # min: 1.0
+    # max: 5.0
+    # values: [1, 2, 3, 4, 5]
+    values: [1, 2, 3]
+  gamma:
+    # min: 1.5
+    # max: 2.5
+    values: [1, 2, 3]
+  q:
+    value: 0.5
+    # values: [0.1, 0.3]
+    # values: [0.1, 0.2, 0.3, 0.4, 0.5]
+  noise_level:
+    value: 5

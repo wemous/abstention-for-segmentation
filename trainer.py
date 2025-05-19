@@ -12,21 +12,22 @@ from datasets import DSAD, CaDIS, NoisyCaDIS, NoisyDSAD
 from models import SegmentationModel
 
 seed = 1
-# torch.use_deterministic_algorithms(True, warn_only=True)
 pl.seed_everything(seed, workers=True)
 torch.set_float32_matmul_precision("high")
 
-max_epochs = 50
-batch_size = 128
 num_classes = 8
+max_epochs = 50
+lr = 3e-3
 
-train_dataset = NoisyCaDIS(noise_level=5, setup=1)
+train_dataset = NoisyCaDIS(noise_level=3, setup=1)
 valid_dataset = CaDIS(split="valid", setup=1)
 test_dataset = CaDIS(split="test", setup=1)
+batch_size = 128
 
-# train_dataset = NoisyDSAD(noise_level=5, normalized=True, rotated=True)
+# train_dataset = NoisyDSAD(noise_level=5)
 # valid_dataset = DSAD(split="valid")
 # test_dataset = DSAD(split="test")
+# batch_size = 50
 
 
 train_loader = DataLoader(
@@ -51,62 +52,88 @@ test_loader = DataLoader(
     num_workers=8,
 )
 
-noise_rate = round(train_dataset.noise_rate, 2)
+noise_rate = train_dataset.noise_rate.round(decimals=2)
+class_noise = train_dataset.class_noise
 
-# loss = {
-#     "name": "CELoss",
-#     "args": {},
-# }
-loss = {
-    "name": "DiceLoss",
-    "args": {},
-}
-# loss = {
+# loss_config = {"name": "GCELoss", "args": {"q": 0.3}}
+# loss_config = {"name": "SCELoss", "args": {"alpha": 0.5, "beta": 1.0}}
+# loss_config = {"name": "CELoss", "args": {}}
+# loss_config = {"name": "DiceLoss", "args": {}}
+
+# loss_config = {
 #     "name": "ADSLoss",
 #     "args": {
 #         "max_epochs": max_epochs,
-#         "warmup_epochs": 10,
-#         "alpha_final": 1.0,
-#     },
-# }
-# loss = {
-#     "name": "DACLoss",
-#     "args": {
-#         "max_epochs": max_epochs,
-#         "warmup_epochs": 10,
-#         "alpha_final": 1.0,
-#     },
-# }
-# loss = {
-#     "name": "IDACLoss",
-#     "args": {
-#         "max_epochs": max_epochs,
-#         "warmup_epochs": 10,
-#         "alpha": 1.0,
 #         "noise_rate": noise_rate,
+#         "class_noise": class_noise,
+#         "alpha_final": 4.0,
+#         "gamma": 2.0,
+#         "warmup_epochs": 10,
 #     },
 # }
-
-num_classes += 1
-
-lr = 3e-3
+loss_config = {
+    "name": "GACLoss",
+    "args": {
+        "max_epochs": max_epochs,
+        "noise_rate": noise_rate,
+        "alpha_final": 3.0,
+        "gamma": 4.0,
+        "warmup_epochs": 10,
+        "q": 0.5,
+    },
+}
+# loss_config = {
+#     "name": "SACLoss",
+#     "args": {
+#         "max_epochs": max_epochs,
+#         "noise_rate": noise_rate,
+#         "alpha_final": 2.0,
+#         "gamma": 2.0,
+#         "warmup_epochs": 15,
+#         "omega": 2.0,
+#         "beta": 0.5,
+#     },
+# }
+# loss_config = {
+#     "name": "GACLoss",
+#     "args": {
+#         "max_epochs": max_epochs,
+#         "noise_rate": noise_rate,
+#         "alpha_final": 4.42974035265131,
+#         "gamma": 2.3135905751656525,
+#         "warmup_epochs": 6,
+#         "q": 0.4866162809498411,
+#     },
+# }
+# loss_config = {
+#     "name": "IGACLoss",
+#     "args": {"noise_rate": noise_rate, "warmup_epochs": 10, "alpha": 1.0, "q": 0.3},
+# }
+# loss_config = {
+#     "name": "DACLoss",
+#     "args": {"max_epochs": max_epochs, "warmup_epochs": 18, "alpha_final": 1.0},
+# }
+# loss_config = {
+#     "name": "IDACLoss",
+#     "args": {"noise_rate": noise_rate, "warmup_epochs": 10, "alpha": 1.0},
+# }
 
 model = SegmentationModel(
     num_classes,
-    loss,
-    lr,
+    loss_config,
+    lr=lr,
     model_name="UNet",
-    include_background=True,
-    window_size=16,
+    include_background=isinstance(train_dataset, NoisyCaDIS),
 )
 
 use_wandb = True
 
 if use_wandb:
     wandb.login()
-    wandb.init(project="playground", name=f"dice")
-# wandb.log({"noise rate": train_dataset.noise_rate})
-# wandb.log({"seed": seed})
+    wandb.Settings(quiet=True)
+    wandb.init(project="playground", name=f"gac")
+    wandb.log({"noise rate": noise_rate})
+    # wandb.log({"seed": seed})
 
 checkpoint_callback = ModelCheckpoint(
     monitor="valid/miou",
@@ -122,7 +149,10 @@ trainer = pl.Trainer(
     enable_model_summary=False,
     enable_progress_bar=True,
     deterministic="warn",
-    log_every_n_steps=len(train_loader) // 3,
+    detect_anomaly=True,
+    # precision=32,
+    # gradient_clip_val=2.0,
+    log_every_n_steps=len(train_loader) // 4,
     logger=WandbLogger() if use_wandb else None,
 )
 
@@ -134,7 +164,7 @@ checkpoint = SegmentationModel.load_from_checkpoint(
     num_classes=num_classes,
 )
 wandb.log({"best epoch": int(Path(checkpoint_path).stem[6:])})
-#
+
 final_metrics = trainer.test(model, test_loader)[0]
 wandb.log(
     {
@@ -154,4 +184,4 @@ wandb.log(
 )
 os.remove(checkpoint_path)
 
-wandb.finish(quiet=True)
+wandb.finish()

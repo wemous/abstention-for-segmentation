@@ -7,10 +7,11 @@ import wandb
 from datasets import DSAD, CaDIS, NoisyCaDIS, NoisyDSAD
 from models import SegmentationModel
 
-pl.seed_everything(0, workers=True)
+pl.seed_everything(1, workers=True)
 torch.set_float32_matmul_precision("high")
 
 wandb.login()
+wandb.Settings(quiet=True)
 
 
 def main():
@@ -18,17 +19,17 @@ def main():
     config = wandb.config
 
     max_epochs = 50
-    batch_size = 128
+    num_classes = 8
 
-    train_dataset = NoisyCaDIS(noise_level=5, setup=1)
+    train_dataset = NoisyCaDIS(noise_level=config.noise_level, setup=1)
     valid_dataset = CaDIS(split="valid", setup=1)
     test_dataset = CaDIS(split="test", setup=1)
-    num_classes = test_dataset.num_classes[1]
+    batch_size = 128
 
-    # train_dataset = NoisyDSAD(noise_level=3)
+    # train_dataset = NoisyDSAD(noise_level=config.noise_level)
     # valid_dataset = DSAD(split="valid")
     # test_dataset = DSAD(split="test")
-    # num_classes = 8
+    # batch_size = 50
 
     train_loader = DataLoader(
         train_dataset,
@@ -52,13 +53,11 @@ def main():
         num_workers=8,
     )
 
-    wandb.log({"noise rate": train_dataset.noise_rate})
-
     loss_config = {
         "name": "SCELoss",
         "args": {
             "alpha": config.alpha,
-            "A": config.A,
+            "beta": config.beta,
         },
     }
 
@@ -67,9 +66,9 @@ def main():
     model = SegmentationModel(
         num_classes,
         loss_config,
-        lr,
+        lr=lr,
         model_name="UNet",
-        include_background=True,
+        include_background=isinstance(train_dataset, NoisyCaDIS),
     )
 
     trainer = pl.Trainer(
@@ -79,12 +78,22 @@ def main():
         enable_model_summary=False,
         enable_progress_bar=True,
         deterministic="warn",
-        log_every_n_steps=len(train_loader) // 3,
+        log_every_n_steps=len(train_loader) // 4,
         logger=WandbLogger(id=run.id),
     )
 
     trainer.fit(model, train_loader, valid_loader)
-    wandb.finish(quiet=True)
+    wandb.log({"valid/miou_final": run.summary.get("valid/miou")})
+    trainer.logger = None
+    final_metrics = trainer.test(model, test_loader)[0]
+    wandb.log(
+        {
+            "test/accuracy_final": final_metrics["test/accuracy"],
+            "test/dice_final": final_metrics["test/dice"],
+            "test/miou_final": final_metrics["test/miou"],
+        }
+    )
+    wandb.finish()
 
 
 main()

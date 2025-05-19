@@ -1,0 +1,35 @@
+program: sac_sweep.py
+project: playground
+name: sac cadis @3
+method: grid
+metric:
+  goal: maximize
+  name: test/miou_final
+parameters:
+  warmup_epochs:
+    # min: 5
+    # max: 25
+    # values: [10, 12, 15, 18, 20]
+    values: [10, 12, 15]
+    # value: 15
+  alpha_final:
+    # min: 1.0
+    # max: 5.0
+    # values: [1, 2, 3, 4, 5]
+    values: [1, 2, 3]
+    # value: 2
+  gamma:
+    # min: 1.5
+    # max: 2.5
+    # values: [1.0, 1.5, 2.0, 2.5, 3.0]
+    values: [1.0, 1.5, 2.0]
+    # value: 2
+  sce_alpha:
+    value: 1.0
+    # values: [0.5, 1.0, 1.5, 2.0]
+  sce_beta:
+    value: 1.0
+    # values: [0.5, 1.0, 1.5, 2.0]
+  noise_level:
+    # values: [3, 5]
+    value: 3

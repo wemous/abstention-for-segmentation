@@ -1,19 +1,21 @@
 program: idac_sweep.py
 project: playground
-name: idac
-method: bayes
+name: idac cadis
+method: grid
 metric:
   goal: maximize
-  name: valid/mIoU
+  name: test/miou_final
 parameters:
   warmup_epochs:
-    # values: [16, 17, 18]
-    min: 5
-    max: 20
+    # min: 5
+    # max: 25
+    # values: [10, 12, 15, 18, 20]
+    value: 10
   alpha:
-    min: 1.0
-    max: 5.0
+    # min: 1.0
+    # max: 10.0
+    values: [1, 2, 3, 5, 10, 20]
   # scale:
-  #   values: [20, 30, 50, 70, 100, 150, 200]
-  # noise_level:
+  noise_level:
+    value: 5
   #   values: [1, 2, 3, 4, 5]

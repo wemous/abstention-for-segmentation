@@ -1,14 +1,15 @@
 program: gce_sweep.py
-project: thesis
-name: gce-cadis-unet
+project: playground
+name: gce cadis
 method: grid
 metric:
   goal: maximize
-  name: valid/mIoU
+  name: test/miou_final
 parameters:
   q:
-    # min: 0.01
-    # max: 0.5
-    values: [0.01, 0.05, 0.1, 0.2, 0.5]
+    # min: 0.001
+    # max: 1.0
+    # values: [0.1, 0.2, 0.3, 0.4, 0.5]
+    values: [0.6, 0.7]
   noise_level:
-    values: [1, 2, 3, 4, 5]
+    values: [3, 5]

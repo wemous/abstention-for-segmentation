@@ -1,14 +1,18 @@
 program: sce_sweep.py
-project: thesis
-name: sce parameters noise-cadis-unet
-method: bayes
+project: playground
+name: sce cadis
+method: grid
 metric:
   goal: maximize
-  name: valid/mIoU
+  name: test/miou_final
 parameters:
   alpha:
-    min: 0.1
-    max: 1.0
-  A:
-    min: -10
-    max: -2
+    # min: 0.01
+    # max: 3.0
+    values: [0.5, 1.0, 1.5, 2.0]
+  beta:
+    # min: 0.01
+    # max: 3.0
+    values: [0.5, 1.0, 1.5, 2.0]
+  noise_level:
+    values: [3, 5]

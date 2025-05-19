@@ -13,6 +13,7 @@ from models import SegmentationModel
 
 torch.set_float32_matmul_precision("high")
 wandb.login()
+wandb.Settings(quiet=True)
 
 
 def main():
@@ -21,22 +22,19 @@ def main():
     pl.seed_everything(config.seed, workers=True)
 
     max_epochs = 50
+    num_classes = 8
     noise_level = config.noise_level
     dataset_name = config.dataset["name"]
-    augmentations = config.dataset["augmentations"]
     batch_size = config.dataset["batch_size"]
 
     if dataset_name == "cadis":
-        setup = config.dataset["setup"]
-        train_dataset = NoisyCaDIS(noise_level=noise_level, setup=setup, **augmentations)
-        valid_dataset = CaDIS(split="valid", setup=setup)
-        test_dataset = CaDIS(split="test", setup=setup)
-        num_classes = test_dataset.num_classes[setup]
-    elif dataset_name == "dsad":
-        train_dataset = NoisyDSAD(noise_level=noise_level, **augmentations)
+        train_dataset = NoisyCaDIS(noise_level=noise_level)
+        valid_dataset = CaDIS(split="valid")
+        test_dataset = CaDIS(split="test")
+    else:
+        train_dataset = NoisyDSAD(noise_level=noise_level)
         valid_dataset = DSAD(split="valid")
         test_dataset = DSAD(split="test")
-        num_classes = 8
 
     train_loader = DataLoader(
         train_dataset,
@@ -60,17 +58,15 @@ def main():
         num_workers=8,
     )
 
-    noise_rate = round(train_dataset.noise_rate, 2)
-    wandb.log({"noise rate": noise_rate})
-
-    if "DAC" in config.loss:
-        num_classes += 1
+    noise_rate = train_dataset.noise_rate.round(decimals=2)
+    class_noise = train_dataset.class_noise
 
     loss_config = {
         "name": config.loss,
         "args": {
-            "noise_rate": noise_rate,
             "max_epochs": max_epochs,
+            "noise_rate": noise_rate,
+            "class_noise": class_noise,
         },
     }
 
@@ -79,14 +75,13 @@ def main():
     model = SegmentationModel(
         num_classes,
         loss_config,
-        lr,
+        lr=lr,
         model_name=config.model,
-        window_size=16,
-        include_background=True,
+        include_background=isinstance(train_dataset, NoisyCaDIS),
     )
 
     checkpoint_callback = ModelCheckpoint(
-        monitor="valid/mIoU",
+        monitor="valid/miou",
         mode="max",
         save_top_k=1,
         filename="{epoch}",
@@ -99,7 +94,7 @@ def main():
         enable_model_summary=False,
         enable_progress_bar=True,
         deterministic="warn",
-        log_every_n_steps=len(train_loader) // 3,
+        log_every_n_steps=len(train_loader) // 4,
         logger=WandbLogger(id=run.id),
     )
 
@@ -111,7 +106,7 @@ def main():
         num_classes=num_classes,
     )
     wandb.log({"best epoch": int(Path(checkpoint_path).stem[6:])})
-    #
+
     final_metrics = trainer.test(model, test_loader)[0]
     wandb.log(
         {
@@ -130,8 +125,7 @@ def main():
         }
     )
     os.remove(checkpoint_path)
-
-    wandb.finish(quiet=True)
+    wandb.finish()
 
 
 main()

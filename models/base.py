@@ -16,17 +16,23 @@ class SegmentationModel(LightningModule):
         loss: dict,
         lr: float = 0.003,
         model_name: str = "UNet",
-        window_size: int = 16,
         include_background: bool = True,
     ):
         super().__init__()
         self.num_classes = num_classes
         self.loss_name = loss["name"]
-        if "DAC" in self.loss_name:
+
+        if "DAC" in self.loss_name or "GAC" in self.loss_name or "SAC" in self.loss_name:
             num_classes += 1
+            self.abstention_channel_exists = True
+        else:
+            self.abstention_channel_exists = False
+
         self.model = getattr(models, model_name)(num_classes).to(self.device)
+        self.loss_function = getattr(losses, loss["name"])(**loss["args"]).to(self.device)
 
         if "ADS" in self.loss_name:
+            window_size = self.loss_function.window_size
             self.segmentation_head = self.model.net.segmentation_head
             in_features = self.segmentation_head[0].in_channels * window_size**2
             self.model.net.segmentation_head = nn.Identity()
@@ -35,8 +41,6 @@ class SegmentationModel(LightningModule):
                 nn.Flatten(1),
                 nn.Linear(in_features, num_classes),
             )
-
-        self.loss_function = getattr(losses, loss["name"])(**loss["args"]).to(self.device)
         self.lr = lr
         self.include_background = include_background
         self.save_hyperparameters()
@@ -64,7 +68,7 @@ class SegmentationModel(LightningModule):
                 self.log(k, v)
         else:
             preds = self.forward(images)
-            if "DAC" in self.loss_name:
+            if self.abstention_channel_exists:
                 output = self.loss_function(preds, targets, training=True, epoch=self.current_epoch)
 
                 loss = output.pop("loss")
@@ -81,7 +85,7 @@ class SegmentationModel(LightningModule):
         preds = self.forward(images)
         loss = self.loss_function(preds, targets)
         self.log("valid/loss", loss, prog_bar=True, on_epoch=True)
-        if "DAC" in self.loss_name:
+        if self.abstention_channel_exists:
             preds = preds[:, :-1]
 
         preds = preds.argmax(1).detach()
@@ -95,7 +99,7 @@ class SegmentationModel(LightningModule):
         images = batch[0].to(self.device)
         targets = batch[1].to(self.device).squeeze().long()
         preds = self.forward(images)
-        if "DAC" in self.loss_name:
+        if self.abstention_channel_exists:
             preds = preds[:, :-1]
 
         preds = preds.argmax(1).detach()

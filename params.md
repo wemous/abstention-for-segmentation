@@ -1,0 +1,61 @@
+- # CaDIS
+    ### batch size: 128
+    - ## DAC
+        - $\alpha_{final}$: 1.0
+        - $L$: 10
+    - ## IDAC
+        - $\alpha$: 1.0
+        - $L$: 10
+    - ## GCE
+        - $q$: 0.5
+    - ## GAC
+        - $\alpha_{final}$: 3.0
+        - $\gamma$: 3.0
+        - $L$: 10
+        - $q$: 0.5
+    - ## SCE
+        - $\alpha$: 1.0
+        - $\beta$: 1.0
+    - ## SAC
+        - $\alpha_{final}$: 1.0
+        - $\gamma$: 1.0
+        - $L$: 10
+        - $\alpha_{sce}$: 1.0
+        - $\beta_{sce}$: 1.0
+    - ## ADS
+        - $\alpha_{final}$: 1.0
+        - $\gamma$: 3.0
+        - $L$: 10
+        - $w$: 16
+- # DSAD
+    ### batch size: 50
+    - ## DAC
+        - $\alpha_{final}$: 2.0
+        - $L$: 18
+    - ## IDAC
+        - $\alpha$: 1.0
+        - $L$: 10
+    - ## GCE
+        - $q$: 0.1
+    - ## GAC
+        - $\alpha_{final}$: 2.0
+        - $\gamma$: 2.0
+        - $L$: 15
+        - $q$: 0.1
+    - ## SCE
+        - $\alpha$: 0.5
+        - $\beta$: 1.0
+    - ## SAC
+        - $\alpha_{final}$: 1.0
+        - $\gamma$: 3.0
+        - $L$: 20
+        - $\alpha_{sce}$: 0.5
+        - $\beta_{sce}$: 1.0
+    - ## ADS
+        - $\alpha_{final}$: 4.0
+        - $\gamma$: 1.5
+        - $L$: 10
+        - $w$ = 16
+
+### lr: 0.003
+### lr_decay: *0.2 every 10 epochs

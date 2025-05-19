@@ -1,32 +1,35 @@
 program: sweep.py
 project: thesis
-name: main-cadis-5
-# name: abstention post-optimization
+name: cadis full
 method: grid
 metric:
   goal: maximize
-  name: test/mIoU
+  name: test/miou_final
 parameters:
   model:
     # values: [UNet, DeepLabV3Plus, FPN]
     value: UNet
   dataset:
-    values: [
-        { "name": "cadis", "batch_size": 128, "setup": 1, "augmentations": {} },
-        # {
-        #   "name": "dsad",
-        #   "batch_size": 64,
-        #   "augmentations": { "normalized": True, "rotated": True },
-        # },
-      ]
+    value: { "name": "cadis", "batch_size": 128 }
+    # value: { "name": "dsad", "batch_size": 50 }
   noise_level:
     values: [0, 1, 2, 3, 4, 5]
-    # values: [1, 5]
     # value: 5
   loss:
-    # values: [ADSLoss, DiceLoss, DACLoss, IDACLoss, CELoss, SCELoss, GCELoss]
+    values:
+      [
+        GACLoss,
+        GCELoss,
+        SACLoss,
+        SCELoss,
+        ADSLoss,
+        DiceLoss,
+        DACLoss,
+        IDACLoss,
+        CELoss,
+      ]
     # values: [DiceLoss, CELoss]
-    values: [ADSLoss, DACLoss, IDACLoss, DiceLoss, CELoss]
+    # values: [CELoss, DiceLoss, DACLoss, IDACLoss, ADSLoss]
   seed:
     values: [1, 2, 3, 4, 5]
     # value: 1

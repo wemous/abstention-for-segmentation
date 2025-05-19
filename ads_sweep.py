@@ -11,21 +11,25 @@ pl.seed_everything(1, workers=True)
 torch.set_float32_matmul_precision("high")
 
 wandb.login()
+wandb.Settings(quiet=True)
 
 
 def main():
     run = wandb.init()
     config = wandb.config
 
-    max_epochs = 50
-    batch_size = 128
     num_classes = 8
+    max_epochs = 50
 
-    train_dataset = NoisyCaDIS(noise_level=5, setup=1)
-    valid_dataset = CaDIS(split="valid", setup=1)
+    # train_dataset = NoisyCaDIS(noise_level=config.noise_level, setup=1)
+    # valid_dataset = CaDIS(split="valid", setup=1)
+    # test_dataset = CaDIS(split="test")
+    # batch_size = 128
 
-    # train_dataset = NoisyDSAD(noise_level=5, normalized=True, rotated=True)
-    # valid_dataset = DSAD(split="valid")
+    train_dataset = NoisyDSAD(noise_level=config.noise_level)
+    valid_dataset = DSAD(split="valid")
+    test_dataset = DSAD(split="test")
+    batch_size = 50
 
     train_loader = DataLoader(
         train_dataset,
@@ -41,26 +45,38 @@ def main():
         drop_last=False,
         num_workers=8,
     )
+    test_loader = DataLoader(
+        test_dataset,
+        batch_size=batch_size,
+        shuffle=False,
+        drop_last=False,
+        num_workers=8,
+    )
+
+    noise_rate = train_dataset.noise_rate.round(decimals=2)
+    class_noise = train_dataset.class_noise
 
     loss_config = {
         "name": "ADSLoss",
         "args": {
             "max_epochs": max_epochs,
-            "warmup_epochs": config.warmup_epochs,
+            "noise_rate": noise_rate,
+            "class_noise": class_noise,
             "alpha_final": config.alpha_final,
             "gamma": config.gamma,
+            "warmup_epochs": config.warmup_epochs,
+            "window_size": config.window_size,
         },
     }
 
-    lr = config.lr
+    lr = 3e-3
 
     model = SegmentationModel(
         num_classes,
         loss_config,
-        lr,
+        lr=lr,
         model_name="UNet",
-        window_size=config.window_size,
-        include_background=True,
+        include_background=isinstance(train_dataset, NoisyCaDIS),
     )
 
     trainer = pl.Trainer(
@@ -70,12 +86,22 @@ def main():
         enable_model_summary=False,
         enable_progress_bar=True,
         deterministic="warn",
-        log_every_n_steps=len(train_loader) // 3,
+        log_every_n_steps=len(train_loader) // 4,
         logger=WandbLogger(id=run.id),
     )
 
     trainer.fit(model, train_loader, valid_loader)
-    wandb.finish(quiet=True)
+    wandb.log({"valid/miou_final": run.summary.get("valid/miou")})
+    trainer.logger = None
+    final_metrics = trainer.test(model, test_loader)[0]
+    wandb.log(
+        {
+            "test/accuracy_final": final_metrics["test/accuracy"],
+            "test/dice_final": final_metrics["test/dice"],
+            "test/miou_final": final_metrics["test/miou"],
+        }
+    )
+    wandb.finish()
 
 
 main()
