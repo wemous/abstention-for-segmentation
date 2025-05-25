@@ -2,9 +2,11 @@ import os
 from pathlib import Path
 
 import lightning as pl
+import matplotlib.pyplot as plt
 import torch
 from lightning.pytorch.callbacks import ModelCheckpoint
 from lightning.pytorch.loggers import WandbLogger
+from PIL import Image
 from torch.utils.data import DataLoader
 
 import wandb
@@ -16,6 +18,15 @@ wandb.login()
 wandb.Settings(quiet=True)
 
 
+def mask_to_pil(mask: torch.Tensor):
+    mask_array = mask.squeeze().cpu().numpy()
+    cmap = plt.get_cmap("gnuplot2", 8)
+    mask_array = cmap(mask_array / 7)[:, :, :3]
+    mask_array = (mask_array * 255).astype("uint8")
+    pil_mask = Image.fromarray(mask_array)
+    return pil_mask
+
+
 def main():
     run = wandb.init()
     config = run.config
@@ -23,18 +34,17 @@ def main():
 
     max_epochs = 50
     num_classes = 8
-    noise_level = config.noise_level
-    dataset_name = config.dataset["name"]
-    batch_size = config.dataset["batch_size"]
 
-    if dataset_name == "cadis":
-        train_dataset = NoisyCaDIS(noise_level=noise_level)
+    if config.dataset == "cadis":
+        train_dataset = NoisyCaDIS(noise_level=config.noise_level)
         valid_dataset = CaDIS(split="valid")
         test_dataset = CaDIS(split="test")
+        batch_size = 128
     else:
-        train_dataset = NoisyDSAD(noise_level=noise_level)
+        train_dataset = NoisyDSAD(noise_level=config.noise_level)
         valid_dataset = DSAD(split="valid")
         test_dataset = DSAD(split="test")
+        batch_size = 50
 
     train_loader = DataLoader(
         train_dataset,
@@ -76,7 +86,7 @@ def main():
         num_classes,
         loss_config,
         lr=lr,
-        model_name=config.model,
+        decoder=config.model,
         include_background=isinstance(train_dataset, NoisyCaDIS),
     )
 
@@ -125,6 +135,12 @@ def main():
         }
     )
     os.remove(checkpoint_path)
+
+    index = 186 if config.dataset == "cadis" else 212
+    sample = model.predict(test_dataset[index][0])
+    pil_sample = mask_to_pil(sample)
+    pil_sample.save(f"images/{config.dataset}-{config.loss[:-4].lower()}.png")
+    wandb.log({"Sample": wandb.Image(pil_sample)})
     wandb.finish()
 
 

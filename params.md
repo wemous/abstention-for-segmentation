@@ -18,7 +18,7 @@
         - $\beta$: 1.0
     - ## SAC
         - $\alpha_{final}$: 1.0
-        - $\gamma$: 1.0
+        - $\gamma$: 1.5
         - $L$: 10
         - $\alpha_{sce}$: 1.0
         - $\beta_{sce}$: 1.0

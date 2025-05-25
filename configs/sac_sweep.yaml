@@ -30,6 +30,8 @@ parameters:
   sce_beta:
     value: 1.0
     # values: [0.5, 1.0, 1.5, 2.0]
+  dataset:
+    value: cadis
   noise_level:
     # values: [3, 5]
     value: 3

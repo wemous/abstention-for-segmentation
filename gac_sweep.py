@@ -21,15 +21,16 @@ def main():
     num_classes = 8
     max_epochs = 50
 
-    train_dataset = NoisyCaDIS(noise_level=config.noise_level, setup=1)
-    valid_dataset = CaDIS(split="valid", setup=1)
-    test_dataset = CaDIS(split="test")
-    batch_size = 128
-
-    # train_dataset = NoisyDSAD(noise_level=5)
-    # valid_dataset = DSAD(split="valid")
-    # test_dataset = DSAD(split="test")
-    # batch_size = 50
+    if config.dataset == "cadis":
+        train_dataset = NoisyCaDIS(noise_level=config.noise_level, setup=1)
+        valid_dataset = CaDIS(split="valid", setup=1)
+        test_dataset = CaDIS(split="test")
+        batch_size = 128
+    else:
+        train_dataset = NoisyDSAD(noise_level=config.noise_level)
+        valid_dataset = DSAD(split="valid")
+        test_dataset = DSAD(split="test")
+        batch_size = 50
 
     train_loader = DataLoader(
         train_dataset,
@@ -73,7 +74,7 @@ def main():
         num_classes,
         loss_config,
         lr=lr,
-        model_name="UNet",
+        decoder="unet",
         include_background=isinstance(train_dataset, NoisyCaDIS),
     )
 

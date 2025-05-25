@@ -11,5 +11,7 @@ parameters:
     # max: 1.0
     # values: [0.1, 0.2, 0.3, 0.4, 0.5]
     values: [0.6, 0.7]
+  dataset:
+    value: dsad
   noise_level:
     values: [3, 5]

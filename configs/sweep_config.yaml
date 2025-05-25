@@ -1,20 +1,20 @@
 program: sweep.py
 project: thesis
-name: cadis full
+name: dsad samples
 method: grid
 metric:
   goal: maximize
   name: test/miou_final
 parameters:
   model:
-    # values: [UNet, DeepLabV3Plus, FPN]
-    value: UNet
+    # value: deeplabv3+
+    value: unet
   dataset:
-    value: { "name": "cadis", "batch_size": 128 }
-    # value: { "name": "dsad", "batch_size": 50 }
+    # value: cadis
+    value: dsad
   noise_level:
-    values: [0, 1, 2, 3, 4, 5]
-    # value: 5
+    # values: [0, 1, 2, 3, 4, 5]
+    value: 5
   loss:
     values:
       [
@@ -31,5 +31,5 @@ parameters:
     # values: [DiceLoss, CELoss]
     # values: [CELoss, DiceLoss, DACLoss, IDACLoss, ADSLoss]
   seed:
-    values: [1, 2, 3, 4, 5]
-    # value: 1
+    # values: [1, 2, 3, 4, 5]
+    value: 1
