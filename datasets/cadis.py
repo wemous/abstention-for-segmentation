@@ -128,3 +128,7 @@ class CaDIS(Dataset):
         mask = torch.load(self.mask_paths[index], weights_only=True)
         mask = mask_to_setup(mask, self.setup)
         return image, mask
+
+    def denorm(self, image: Tensor) -> Tensor:
+        """Denormalize the image tensor."""
+        return image * torch.tensor(std).view(3, 1, 1) + torch.tensor(mean).view(3, 1, 1)

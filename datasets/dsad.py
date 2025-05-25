@@ -99,3 +99,7 @@ class DSAD(Dataset):
         image = torch.load(self.image_paths[index], weights_only=True)
         mask = torch.load(self.mask_paths[index], weights_only=True)
         return image, mask
+
+    def denorm(self, image: Tensor) -> Tensor:
+        """Denormalize the image tensor."""
+        return image * torch.tensor(std).view(3, 1, 1) + torch.tensor(mean).view(3, 1, 1)

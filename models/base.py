@@ -1,12 +1,13 @@
 import torch.nn.functional as F
 from lightning import LightningModule
+from segmentation_models_pytorch.decoders.deeplabv3 import DeepLabV3Plus
+from segmentation_models_pytorch.decoders.unet import Unet
 from torch import Tensor, nn
 from torch.optim.adamw import AdamW
 from torch.optim.lr_scheduler import MultiplicativeLR
 from torchmetrics.functional.segmentation import dice_score, mean_iou
 
 import losses
-import models
 
 
 class SegmentationModel(LightningModule):
@@ -15,7 +16,7 @@ class SegmentationModel(LightningModule):
         num_classes: int,
         loss: dict,
         lr: float = 0.003,
-        model_name: str = "UNet",
+        decoder: str = "unet",
         include_background: bool = True,
     ):
         super().__init__()
@@ -28,14 +29,20 @@ class SegmentationModel(LightningModule):
         else:
             self.abstention_channel_exists = False
 
-        self.model = getattr(models, model_name)(num_classes).to(self.device)
+        if decoder.lower() == "unet":
+            self.model = Unet(encoder_name="resnet50", classes=num_classes).to(self.device)
+        elif decoder.lower() == "deeplabv3+":
+            self.model = DeepLabV3Plus(encoder_name="resnet50", classes=num_classes).to(self.device)
+        else:
+            raise ValueError(f"Unknown decoder: {decoder}")
+
         self.loss_function = getattr(losses, loss["name"])(**loss["args"]).to(self.device)
 
         if "ADS" in self.loss_name:
             window_size = self.loss_function.window_size
-            self.segmentation_head = self.model.net.segmentation_head
+            self.segmentation_head = self.model.segmentation_head
             in_features = self.segmentation_head[0].in_channels * window_size**2
-            self.model.net.segmentation_head = nn.Identity()
+            self.model.segmentation_head = nn.Identity()
             self.abstention_head = nn.Sequential(
                 nn.AdaptiveAvgPool2d(window_size),
                 nn.Flatten(1),
@@ -143,3 +150,13 @@ class SegmentationModel(LightningModule):
                 "frequency": 10,
             },
         }
+
+    def predict(self, x: Tensor) -> Tensor:
+        x = x.unsqueeze(0)
+        if "ADS" in self.loss_name:
+            output = self.segmentation_head(self.model(x))
+        elif self.abstention_channel_exists:
+            output = self.model(x)[:, :-1]
+        else:
+            output = self.model(x)
+        return output.argmax(1).squeeze().detach().cpu()
