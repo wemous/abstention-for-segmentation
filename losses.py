@@ -19,8 +19,8 @@ class DACLoss(nn.Module):
     def __init__(
         self,
         max_epochs: int,
-        warmup_epochs: int = 18,
         alpha_final=2.0,
+        warmup_epochs: int = 18,
         mu=0.05,
         rho=64,
         **kwargs,
@@ -98,9 +98,9 @@ class IDACLoss(nn.Module):
 
     def __init__(
         self,
-        noise_rate: Tensor,
-        warmup_epochs: int = 10,
+        noise_rate: float = 0.0,
         alpha=1.0,
+        warmup_epochs: int = 10,
         **kwargs,
     ):
         super().__init__()
@@ -164,8 +164,8 @@ class GACLoss(nn.Module):
         noise_rate: float = 0.0,
         alpha_final: float = 2.0,
         gamma: float = 2.0,
-        q: float = 0.1,
         warmup_epochs: int = 15,
+        q: float = 0.1,
         **kwargs,
     ):
         super().__init__()
@@ -252,9 +252,9 @@ class SACLoss(nn.Module):
         noise_rate: float = 0.0,
         alpha_final: float = 1.0,
         gamma: float = 3.0,
+        warmup_epochs: int = 20,
         sce_alpha: float = 0.5,
         sce_beta: float = 1.0,
-        warmup_epochs: int = 20,
         **kwargs,
     ):
         super().__init__()

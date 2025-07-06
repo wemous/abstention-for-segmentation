@@ -136,7 +136,7 @@ def main():
     )
     os.remove(checkpoint_path)
 
-    index = 186 if config.dataset == "cadis" else 212
+    index = 186 if config.dataset == "cadis" else 210
     sample = model.predict(test_dataset[index][0])
     pil_sample = mask_to_pil(sample)
     pil_sample.save(f"images/{config.dataset}-{config.loss[:-4].lower()}.png")

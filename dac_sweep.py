@@ -21,15 +21,16 @@ def main():
     max_epochs = 50
     num_classes = 8
 
-    train_dataset = NoisyCaDIS(noise_level=3, setup=1)
-    valid_dataset = CaDIS(split="valid", setup=1)
-    test_dataset = CaDIS(split="test", setup=1)
-    batch_size = 128
-
-    # train_dataset = NoisyDSAD(noise_level=config.noise_level)
-    # valid_dataset = DSAD(split="valid")
-    # test_dataset = DSAD(split="test")
-    # batch_size = 50
+    if config.dataset == "cadis":
+        train_dataset = NoisyCaDIS(noise_level=config.noise_level, setup=1)
+        valid_dataset = CaDIS(split="valid", setup=1)
+        test_dataset = CaDIS(split="test", setup=1)
+        batch_size = 128
+    else:
+        train_dataset = NoisyDSAD(noise_level=config.noise_level)
+        valid_dataset = DSAD(split="valid")
+        test_dataset = DSAD(split="test")
+        batch_size = 50
 
     train_loader = DataLoader(
         train_dataset,
@@ -53,12 +54,16 @@ def main():
         num_workers=8,
     )
 
+    noise_rate = train_dataset.noise_rate.round(decimals=2)
+
     loss_config = {
         "name": "DACLoss",
         "args": {
             "max_epochs": max_epochs,
+            "noise_rate": noise_rate,
             "warmup_epochs": config.warmup_epochs,
             "alpha_final": config.alpha_final,
+            "gamma": config.gamma,
         },
     }
 
@@ -68,7 +73,7 @@ def main():
         num_classes,
         loss_config,
         lr=lr,
-        model_name="UNet",
+        decoder="unet",
         include_background=isinstance(train_dataset, NoisyCaDIS),
     )
 
@@ -94,7 +99,6 @@ def main():
             "test/miou_final": final_metrics["test/miou"],
         }
     )
-    wandb.finish()
     wandb.finish()
 
 
