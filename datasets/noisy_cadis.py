@@ -11,6 +11,8 @@ from .cadis import CaDIS, mask_to_setup
 
 
 def flip_label(mask: torch.Tensor, num_classes: int):
+    """Flip a random label in the mask to another radom label in the dataset."""
+
     label_to_flip = random.choice(mask.unique().tolist())
     targets = [*range(num_classes)]
     targets.remove(label_to_flip)
@@ -22,7 +24,7 @@ class NoisyCaDIS(Dataset):
     def __init__(self, noise_level: int, setup: int = 1):
         super().__init__()
         assert noise_level > -1 and noise_level < 6
-        assert setup > 0 and setup < 4
+        assert setup in [1, 2, 3]
 
         cadis = CaDIS(split="train", setup=setup)
         self.noise_level = noise_level
@@ -30,6 +32,7 @@ class NoisyCaDIS(Dataset):
         self.num_classes = cadis.num_classes[setup]
         self.image_paths = cadis.image_paths
 
+        # return clean dataset if noise level is 0
         if noise_level == 0:
             self.mask_paths = cadis.mask_paths
             self.noise_rate = torch.tensor(0.0).cuda()
@@ -37,6 +40,7 @@ class NoisyCaDIS(Dataset):
         else:
             self.mask_paths = []
 
+            # erosion and dilation kernels and flip rates for different noise levels
             noise_config = {
                 1: (torch.ones([5, 5]).cuda(), 0.05),
                 2: (torch.ones([9, 9]).cuda(), 0.1),
@@ -45,7 +49,10 @@ class NoisyCaDIS(Dataset):
                 5: (torch.ones([13, 13]).cuda(), 0.95),
             }
 
+            # root path for noisy dataset
+            # should be consistent with the clean dataset root path
             root_path = Path(f"/data/wesam/datasets/CaDIS/noisy/setup_{setup}/{noise_level}")
+
             if not root_path.exists():
                 print(f"Building noisy labels at noise level {noise_level}")
                 morph = [dilation] * (len(cadis) // 2) + [erosion] * (len(cadis) // 2)
@@ -60,9 +67,12 @@ class NoisyCaDIS(Dataset):
                     mask = mask_to_setup(mask, setup)
                     noisy_mask = mask.clone()
                     kernel, flip_rate = noise_config[noise_level]
+
                     if i < len(cadis) * flip_rate:
                         noisy_mask = flip_label(noisy_mask, cadis.num_classes[setup])
                     noisy_mask = morph[i](noisy_mask.unsqueeze(0), kernel)[0]
+
+                    # accumulate dataset noise rate and class noise
                     noise_rate += (mask != noisy_mask).float().mean()
                     for j in range(self.num_classes):
                         noise_count[j] += ((noisy_mask == j) > (mask == j)).sum()

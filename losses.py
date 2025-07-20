@@ -149,6 +149,7 @@ class GCELoss(nn.Module):
         self.q = q
 
     def forward(self, preds: Tensor, targets: Tensor):
+        # clamp to avoid over- and underflow with softmax
         preds = F.softmax(preds, dim=1).clamp(min=1e-15, max=1 - 1e-15)
         true_preds = torch.gather(preds, 1, targets.unsqueeze(1))
         loss = (1 - true_preds**self.q) / self.q
@@ -197,6 +198,7 @@ class GACLoss(nn.Module):
             if epoch < self.warmup_epochs:
                 loss = gce_loss
             else:
+                # calculate alpha every epoch
                 if epoch > self.alpha_update_epoch:
                     self.alpha = (
                         self.alpha_final
@@ -324,6 +326,7 @@ class DiceLoss(nn.Module):
         preds = preds.softmax(dim=1)
         targets = F.one_hot(targets, preds.shape[1]).movedim(-1, 1)
         instersection = (preds * targets).sum(dims)
+        # avoid division by zero
         sum_preds = preds.sum(dims).clamp_min(1e-7)
         sum_targets = targets.sum(dims)
         scores = 2 * instersection / (sum_preds + sum_targets)
@@ -395,6 +398,7 @@ class ADSLoss(nn.Module):
                 )
                 loss = (1 - abstention) * dice_loss + regularization
             abstention = abstention.mean(0)
+            # log the abstention for each class
             class_abstention = {f"Class {i} Abstention": p for i, p in enumerate(abstention)}
             output = {
                 "loss": loss.mean(),

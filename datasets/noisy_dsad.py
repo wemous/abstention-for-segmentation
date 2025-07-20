@@ -11,7 +11,9 @@ from .dsad import DSAD
 
 
 def flip_label(mask: torch.Tensor):
+    # no flipping if only background is prsent
     if len(mask.unique()) > 1:
+        # flip a random label in the mask to another random label in the dataset except background
         label_to_flip = random.choice(mask.unique()[1:].tolist())
         targets = [*range(1, 8)]
         targets.remove(label_to_flip)
@@ -34,6 +36,8 @@ class NoisyDSAD(Dataset):
             self.class_noise = torch.zeros(self.num_classes).float().cuda()
         else:
             self.mask_paths = []
+
+            # erosion and dilation kernels and flip rates for different noise levels
             noise_config = {
                 1: (torch.ones([7, 7]).cuda(), 0.06),
                 2: (torch.ones([9, 9]).cuda(), 0.53),
@@ -42,7 +46,10 @@ class NoisyDSAD(Dataset):
                 5: (torch.ones([29, 29]).cuda(), 1.0),
             }
 
+            # root path for noisy dataset
+            # should be consistent with the clean dataset root path
             root_path = Path(f"/data/wesam/datasets/DSAD/noisy/{noise_level}")
+
             if not root_path.exists():
                 print(f"Building noisy labels at noise level {noise_level}")
                 morph = [dilation] * (len(dsad) // 2) + [erosion] * (len(dsad) // 2)
@@ -59,6 +66,8 @@ class NoisyDSAD(Dataset):
                     noisy_mask = morph[i](noisy_mask.unsqueeze(0), kernel)[0]
                     if i < len(dsad) * flip_rate:
                         noisy_mask = flip_label(noisy_mask)
+
+                    # accumulate dataset noise rate and class noise
                     noise_rate += (mask != noisy_mask).float().mean()
                     for j in range(self.num_classes):
                         noise_count[j] += ((noisy_mask == j) > (mask == j)).sum()

@@ -23,7 +23,8 @@ class SegmentationModel(LightningModule):
         self.num_classes = num_classes
         self.loss_name = loss["name"]
 
-        if "DAC" in self.loss_name or "GAC" in self.loss_name or "SAC" in self.loss_name:
+        # check for pixel-wise abstaining losses
+        if self.loss_name[:-4] in ["DAC", "IDAC", "GAC", "SAC"]:
             num_classes += 1
             self.abstention_channel_exists = True
         else:
@@ -36,11 +37,15 @@ class SegmentationModel(LightningModule):
         else:
             raise ValueError(f"Unknown decoder: {decoder}")
 
+        # initialize the loss function
         self.loss_function = getattr(losses, loss["name"])(**loss["args"]).to(self.device)
 
+        # build the abstntion head for ADS
         if "ADS" in self.loss_name:
+            # avg pool output size
             window_size = self.loss_function.window_size
             self.segmentation_head = self.model.segmentation_head
+            # linear layer input size
             in_features = self.segmentation_head[0].in_channels * window_size**2
             self.model.segmentation_head = nn.Identity()
             self.abstention_head = nn.Sequential(
@@ -54,8 +59,12 @@ class SegmentationModel(LightningModule):
 
     def forward(self, x: Tensor, *args, **kwargs):
         output = self.model(x)
+
+        # special pipeline for ADS
+        # 'output' is the last hidden state
         if "ADS" in self.loss_name:
             preds = self.segmentation_head(output)
+            # ignore abstention head in validation and inference
             if self.training:
                 abstention = self.abstention_head(output)
                 return preds, abstention
@@ -67,22 +76,24 @@ class SegmentationModel(LightningModule):
     def training_step(self, batch, batch_idx) -> Tensor:
         images = batch[0].to(self.device)
         targets = batch[1].to(self.device).squeeze().long()
+
+        # log abstention metrics
         if "ADS" in self.loss_name:
             preds, abstention = self.forward(images)
             output = self.loss_function(preds, targets, abstention, epoch=self.current_epoch)
             loss = output.pop("loss")
             for k, v in output.items():
                 self.log(k, v)
+        elif self.abstention_channel_exists:
+            preds = self.forward(images)
+            output = self.loss_function(preds, targets, training=True, epoch=self.current_epoch)
+            loss = output.pop("loss")
+            for k, v in output.items():
+                self.log(k, v)
         else:
             preds = self.forward(images)
-            if self.abstention_channel_exists:
-                output = self.loss_function(preds, targets, training=True, epoch=self.current_epoch)
+            loss = self.loss_function(preds, targets)
 
-                loss = output.pop("loss")
-                for k, v in output.items():
-                    self.log(k, v)
-            else:
-                loss = self.loss_function(preds, targets)
         self.log("train/loss", loss, prog_bar=True, on_step=True)
         return loss
 
@@ -116,12 +127,15 @@ class SegmentationModel(LightningModule):
         self.log("test/miou", miou, on_epoch=True)
 
     def calculate_metrics(self, preds, targets):
+        # exclude background from accuracy if specified
         if self.include_background:
             accuracy = (preds == targets).float().mean()
         else:
             accuracy = (preds == targets)[:, 1:].float().mean()
+
         preds = F.one_hot(preds, self.num_classes).movedim(-1, 1)
         targets = F.one_hot(targets, self.num_classes).movedim(-1, 1)
+
         dice = dice_score(
             preds,
             targets,
@@ -142,6 +156,7 @@ class SegmentationModel(LightningModule):
 
     def configure_optimizers(self):
         optimizer = AdamW(self.parameters(), lr=self.lr)
+        # divide learning rate by 5 every 10 epochs
         return {
             "optimizer": optimizer,
             "lr_scheduler": {
@@ -152,6 +167,7 @@ class SegmentationModel(LightningModule):
         }
 
     def predict(self, x: Tensor) -> Tensor:
+        """predict a single sample for visualization purposes"""
         x = x.unsqueeze(0)
         if "ADS" in self.loss_name:
             output = self.segmentation_head(self.model(x))
