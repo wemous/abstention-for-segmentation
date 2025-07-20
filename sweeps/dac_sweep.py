@@ -61,9 +61,9 @@ def main():
         "args": {
             "max_epochs": max_epochs,
             "noise_rate": noise_rate,
-            "warmup_epochs": config.warmup_epochs,
             "alpha_final": config.alpha_final,
             "gamma": config.gamma,
+            "warmup_epochs": config.warmup_epochs,
         },
     }
 

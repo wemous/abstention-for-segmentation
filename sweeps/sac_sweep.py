@@ -24,7 +24,7 @@ def main():
     if config.dataset == "cadis":
         train_dataset = NoisyCaDIS(noise_level=config.noise_level, setup=1)
         valid_dataset = CaDIS(split="valid", setup=1)
-        test_dataset = CaDIS(split="test")
+        test_dataset = CaDIS(split="test", setup=1)
         batch_size = 128
     else:
         train_dataset = NoisyDSAD(noise_level=config.noise_level)
@@ -57,11 +57,15 @@ def main():
     noise_rate = train_dataset.noise_rate.round(decimals=2)
 
     loss_config = {
-        "name": "IDACLoss",
+        "name": "SACLoss",
         "args": {
+            "max_epochs": max_epochs,
             "noise_rate": noise_rate,
+            "alpha_final": config.alpha_final,
+            "gamma": config.gamma,
             "warmup_epochs": config.warmup_epochs,
-            "alpha": config.alpha,
+            "sce_alpha": config.sce_alpha,
+            "sce_beta": config.sce_beta,
         },
     }
 

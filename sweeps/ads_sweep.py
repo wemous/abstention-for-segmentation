@@ -24,7 +24,7 @@ def main():
     if config.dataset == "cadis":
         train_dataset = NoisyCaDIS(noise_level=config.noise_level, setup=1)
         valid_dataset = CaDIS(split="valid", setup=1)
-        test_dataset = CaDIS(split="test")
+        test_dataset = CaDIS(split="test", setup=1)
         batch_size = 128
     else:
         train_dataset = NoisyDSAD(noise_level=config.noise_level)
@@ -54,10 +54,19 @@ def main():
         num_workers=8,
     )
 
+    noise_rate = train_dataset.noise_rate.round(decimals=2)
+    class_noise = train_dataset.class_noise
+
     loss_config = {
-        "name": "GCELoss",
+        "name": "ADSLoss",
         "args": {
-            "q": config.q,
+            "max_epochs": max_epochs,
+            "noise_rate": noise_rate,
+            "class_noise": class_noise,
+            "alpha_final": config.alpha_final,
+            "gamma": config.gamma,
+            "warmup_epochs": config.warmup_epochs,
+            "window_size": config.window_size,
         },
     }
 
@@ -70,6 +79,7 @@ def main():
         decoder="unet",
         include_background=isinstance(train_dataset, NoisyCaDIS),
     )
+
     trainer = pl.Trainer(
         devices=1,
         max_epochs=max_epochs,
