@@ -1,93 +1,120 @@
-# DAC segmentation
+# Abstention for Noise-Robust Learning in Medical Image Segmentation
+
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+[![Python 3.12+](https://img.shields.io/badge/python-3.12+-blue.svg)](https://www.python.org/downloads/release/python-3120/)
+[![PyTorch 2.0+](https://img.shields.io/badge/PyTorch-%23EE4C2C.svg?style=flat&logo=PyTorch&logoColor=white)](https://pytorch.org/)
+
+This repository contains the complete codebase for my Master's Thesis, conducted at the **University of Bonn** in collaboration with the **Fraunhofer Institute IAIS**.
+
+The project introduces a novel, universal abstention framework to enhance the noise-resistance of deep learning models, enabling more reliable training on datasets with noisy labels.
+
+<!-- ![Alt text](assets/ground_truth.png "a title")
+![Alt text](assets/dice.png "a title")
+![Alt text](assets/ads.png "a title") -->
+<!-- ![Qualitative Results Teaser](assets/ground_truth.png) -->
 
 
+<table>
+  <tr>
+    <td align="center">
+      <img src="assets/ground_truth.png" width="250">
+    </td>
+    <td align="center">
+      <img src="assets/dice.png" width="250">
+    </td>
+    <td align="center">
+      <img src="assets/ads.png" width="250">
+    </td>
+  </tr>
+  <tr>
+    <td align="center"><strong>(a) Ground Truth</strong></td>
+    <td align="center"><strong>(b) Baseline (Dice Loss)</strong></td>
+    <td align="center"><strong>(c) Our Method (ADS)</strong></td>
+  </tr>
+</table>
+This visual comparison on a CaDIS sample with 25% label noise demonstrates how my proposed ADS method produces a significantly cleaner segmentation than the baseline Dice Loss.
 
-## Getting started
+---
 
-To make it easy for you to get started with GitLab, here's a list of recommended next steps.
+## Thesis Highlights & Key Achievements
 
-Already a pro? Just edit this README.md and make it your own. Want to make it easy? [Use the template at the bottom](#editing-this-readme)!
+*   **Developed a Universal Abstention Framework:** I designed a modular framework that can be integrated with any loss function to improve its robustness against label noise. The core loss implementations can be found in `losses.py`.
+*   **Designed and Implemented Three Novel Loss Functions:** I created the Generalized Abstaining Classifier (GAC), Symmetric Abstaining Classifier (SAC), and Abstaining Dice Segmenter (ADS).
+*   **Engineered a Specialized Class-wise Architecture:** For the ADS model, I developed a novel architectural adaptation (in `models/base.py`) to enable class-wise abstention, making the mechanism compatible with region-based losses like Dice Loss.
+*   **Built a Reproducible Experimental Pipeline:** I engineered a robust experimental workflow using YAML configurations and a master sweep script (`sweeps/sweep.py`) to systematically train and evaluate models across multiple datasets, noise levels, and random seeds.
+*   **Publication-Quality Research:** A scientific paper based on this thesis has been submitted for publication at the IEEE BigData 2025 conference.
 
-## Add your files
-
-- [ ] [Create](https://docs.gitlab.com/ee/user/project/repository/web_editor.html#create-a-file) or [upload](https://docs.gitlab.com/ee/user/project/repository/web_editor.html#upload-a-file) files
-- [ ] [Add files using the command line](https://docs.gitlab.com/ee/gitlab-basics/add-file.html#add-a-file-using-the-command-line) or push an existing Git repository with the following command:
-
-```
-cd existing_repo
-git remote add origin https://gitlab.cc-asp.fraunhofer.de/wmoustafa/dac-segmentation.git
-git branch -M main
-git push -uf origin main
-```
-
-## Integrate with your tools
-
-- [ ] [Set up project integrations](https://gitlab.cc-asp.fraunhofer.de/wmoustafa/dac-segmentation/-/settings/integrations)
-
-## Collaborate with your team
-
-- [ ] [Invite team members and collaborators](https://docs.gitlab.com/ee/user/project/members/)
-- [ ] [Create a new merge request](https://docs.gitlab.com/ee/user/project/merge_requests/creating_merge_requests.html)
-- [ ] [Automatically close issues from merge requests](https://docs.gitlab.com/ee/user/project/issues/managing_issues.html#closing-issues-automatically)
-- [ ] [Enable merge request approvals](https://docs.gitlab.com/ee/user/project/merge_requests/approvals/)
-- [ ] [Set auto-merge](https://docs.gitlab.com/ee/user/project/merge_requests/merge_when_pipeline_succeeds.html)
-
-## Test and Deploy
-
-Use the built-in continuous integration in GitLab.
-
-- [ ] [Get started with GitLab CI/CD](https://docs.gitlab.com/ee/ci/quick_start/index.html)
-- [ ] [Analyze your code for known vulnerabilities with Static Application Security Testing (SAST)](https://docs.gitlab.com/ee/user/application_security/sast/)
-- [ ] [Deploy to Kubernetes, Amazon EC2, or Amazon ECS using Auto Deploy](https://docs.gitlab.com/ee/topics/autodevops/requirements.html)
-- [ ] [Use pull-based deployments for improved Kubernetes management](https://docs.gitlab.com/ee/user/clusters/agent/)
-- [ ] [Set up protected environments](https://docs.gitlab.com/ee/ci/environments/protected_environments.html)
-
-***
-
-# Editing this README
-
-When you're ready to make this README your own, just edit this file and use the handy template below (or feel free to structure it however you want - this is just a starting point!). Thanks to [makeareadme.com](https://www.makeareadme.com/) for this template.
-
-## Suggestions for a good README
-
-Every project is different, so consider which of these sections apply to yours. The sections used in the template are suggestions for most open source projects. Also keep in mind that while a README can be too long and detailed, too long is better than too short. If you think your README is too long, consider utilizing another form of documentation rather than cutting out information.
-
-## Name
-Choose a self-explaining name for your project.
-
-## Description
-Let people know what your project can do specifically. Provide context and add a link to any reference visitors might be unfamiliar with. A list of Features or a Background subsection can also be added here. If there are alternatives to your project, this is a good place to list differentiating factors.
-
-## Badges
-On some READMEs, you may see small images that convey metadata, such as whether or not all the tests are passing for the project. You can use Shields to add some to your README. Many services also have instructions for adding a badge.
-
-## Visuals
-Depending on what you are making, it can be a good idea to include screenshots or even a video (you'll frequently see GIFs rather than actual videos). Tools like ttygif can help, but check out Asciinema for a more sophisticated method.
+---
 
 ## Installation
-Within a particular ecosystem, there may be a common way of installing things, such as using Yarn, NuGet, or Homebrew. However, consider the possibility that whoever is reading your README is a novice and would like more guidance. Listing specific steps helps remove ambiguity and gets people to using your project as quickly as possible. If it only runs in a specific context like a particular programming language version or operating system or has dependencies that have to be installed manually, also add a Requirements subsection.
 
-## Usage
-Use examples liberally, and show the expected output if you can. It's helpful to have inline the smallest example of usage that you can demonstrate, while providing links to more sophisticated examples if they are too long to reasonably include in the README.
+This project was developed using Python 3.12 and PyTorch 2.6 on CUDA 11.8.
 
-## Support
-Tell people where they can go to for help. It can be any combination of an issue tracker, a chat room, an email address, etc.
+1.  **Clone the repository:**
+    ```bash
+    git clone https://github.com/wemous/abstention-for-segmentation.git
+    cd abstention-for-segmentation
+    ```
 
-## Roadmap
-If you have ideas for releases in the future, it is a good idea to list them in the README.
+2.  **Create a Conda environment (recommended):**
+    ```bash
+    conda create -n abstention python=3.12
+    conda activate abstention
+    ```
 
-## Contributing
-State if you are open to contributions and what your requirements are for accepting them.
+3.  **Install dependencies:**
+    All required packages are listed in `requirements.txt`.
+    ```bash
+    pip install -r requirements.txt
+    ```
 
-For people who want to make changes to your project, it's helpful to have some documentation on how to get started. Perhaps there is a script that they should run or some environment variables that they need to set. Make these steps explicit. These instructions could also be useful to your future self.
+---
 
-You can also document commands to lint the code or run tests. These steps help to ensure high code quality and reduce the likelihood that the changes inadvertently break something. Having instructions for running tests is especially helpful if it requires external setup, such as starting a Selenium server for testing in a browser.
+## Dataset Setup
 
-## Authors and acknowledgment
-Show your appreciation to those who have contributed to the project.
+1.  **Download the datasets:**
+    *   **CaDIS:** Available upon request from the author.
+    *   **DSAD:** Available on [Figshare](https://springernature.figshare.com/articles/dataset/The_Dresden_Surgical_Anatomy_Dataset_for_abdominal_organ_segmentation_in_surgical_data_science/21702600?file=38494425).
+
+2.  **Organize the data:**
+    Create a `data/` directory in the project root and structure the datasets as described in the `datasets` module.
+
+---
+
+## Project Workflow
+
+The codebase is structured to support both quick tests and large-scale, reproducible experiments.
+
+### 1. Quick Sanity Check
+
+For debugging or testing the pipeline with a single model, you can use `trainer.py`. This script is designed for rapid, one-off runs and does not use a config file.
+
+```bash
+python trainer.py
+```
+
+### 2. Hyperparameter Optimization
+
+I performed hyperparameter tuning for the novel loss functions using Weights & Biases sweeps. The configurations for these sweeps are defined in the YAML files located in the `sweeps/` directory (e.g., `gac_sweep.yaml`).
+
+### 3. Reproducing the Thesis Results
+
+The final, comprehensive results were generated using the master sweep script, which systematically iterates through all experimental conditions.
+
+1.  **Configure the sweep:** Open `config/sweep_config.yaml` to select the dataset(s), losses, and random seeds.
+2.  **Run the script:**
+    ```bash
+    wandb sweep configs/sweep_config.yaml
+    wandb agent <sweep-ID>
+    ```
+    This script trains each model on all noise levels for 5 different random seeds, logging all results to W&B. This is the script that generated the data for the main results table in my thesis.
+
+---
 
 ## License
-For open source projects, say how it is licensed.
 
-## Project status
-If you have run out of energy or time for your project, put a note at the top of the README saying that development has slowed down or stopped completely. Someone may choose to fork your project or volunteer to step in as a maintainer or owner, allowing your project to keep going. You can also make an explicit request for maintainers.
+This project is licensed under the MIT License. See the `LICENSE` file for details.
+
+## Acknowledgements
+
+This Master's Thesis was completed in collaboration with the **Fraunhofer Institute for Intelligent Analysis and Information Systems (IAIS)**. This research has been funded by the **Federal Ministry of Education and Research of Germany** and the state of **North-Rhine Westphalia** as part of the **Lamarr-Institute for Machine Learning and Artificial Intelligence**.
