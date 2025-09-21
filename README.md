@@ -66,6 +66,7 @@ This project was developed using Python 3.12 and PyTorch 2.6 on CUDA 11.8.
     All required packages are listed in `requirements.txt`.
     ```bash
     pip install -r requirements.txt
+    pip install torch==2.6.0 torchvision==0.21.0 --index-url https://download.pytorch.org/whl/cu118
     ```
 
 ---
